@@ -7,32 +7,30 @@ from database import init_db, db_session
 from models import Diario, Oportunidade
 from openai import OpenAI
 
-# --- CORREÇÃO AQUI ---
-# Cole sua chave dentro das aspas abaixo
-MINHA_CHAVE_OPENAI = "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"  # <--- COLE SUA CHAVE AQUI
+# --- PASSO 1: COLE SUA NOVA CHAVE AQUI DENTRO DAS ASPAS ---
+MINHA_CHAVE_OPENAI = "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" 
 
-# Inicializa o cliente forçando a chave
+# Inicializa cliente
 client = OpenAI(api_key=MINHA_CHAVE_OPENAI)
 
 class GovTechAPI:
     @cherrypy.expose
     def index(self):
-        return "API GovTech Online (v3 - Key Hardcoded)."
+        return "API GovTech Online (v4 - Final)."
 
     @cherrypy.expose
     @cherrypy.tools.json_out()
     def upload(self, arquivo_pdf, codigo, edicao, hash_origem, data_pub):
         session = db_session()
         
-        # 1. Verifica se já existe
+        # 1. Verifica duplicidade
         if session.query(Diario).filter_by(codigo_origem=codigo).first():
             session.close()
             return {"status": "Ignorado", "msg": "Já existe."}
 
-        # 2. Salva arquivo local
+        # 2. Salva arquivo
         if not os.path.exists('uploads'): os.makedirs('uploads')
         caminho = os.path.join('uploads', arquivo_pdf.filename)
-        
         with open(caminho, 'wb') as out:
             while True:
                 data = arquivo_pdf.file.read(8192)
@@ -51,6 +49,10 @@ class GovTechAPI:
         )
         session.add(novo_diario)
         session.commit()
+        
+        # --- CORREÇÃO DO ERRO SQLALCHEMY ---
+        # Salvamos o ID numa variável agora, enquanto a conexão está aberta
+        id_gerado = novo_diario.id 
 
         # 4. Extrai Texto
         texto = ""
@@ -66,11 +68,8 @@ class GovTechAPI:
         # 5. Chama a IA
         if len(texto) > 50:
             prompt = f"""
-            Analise o texto de Diário Oficial abaixo.
-            Extraia licitações, dispensas ou contratos.
-            Retorne APENAS um JSON array puro (sem ```json no inicio) com os campos:
-            "objeto" (resumo), "valor" (numero float), "favorecido", "prazo", "insight" (dica curta).
-            
+            Analise o texto. Extraia licitações.
+            Retorne JSON array puro: "objeto", "valor" (float), "favorecido", "prazo", "insight".
             Texto: {texto[:15000]}
             """
             
@@ -82,37 +81,39 @@ class GovTechAPI:
                 )
                 
                 conteudo = resp.choices[0].message.content.strip()
-                if conteudo.startswith("```json"): 
-                    conteudo = conteudo[7:-3]
-                elif conteudo.startswith("```"):
-                    conteudo = conteudo[3:-3]
+                if conteudo.startswith("```"): 
+                    conteudo = conteudo.replace("```json", "").replace("```", "")
                 
                 dados_ia = json.loads(conteudo)
                 
-                contador = 0
                 for item in dados_ia:
-                    op = Oportunidade(
-                        diario_id=novo_diario.id,
-                        tipo="Detectado IA",
-                        objeto_resumido=item.get('objeto', 'N/A'),
-                        valor=float(item.get('valor', 0) or 0),
-                        favorecido=item.get('favorecido', 'N/A'),
-                        prazo_vigencia=item.get('prazo', 'N/A'),
-                        insight_venda=item.get('insight', '')
-                    )
-                    session.add(op)
-                    contador += 1
+                    try:
+                        val = item.get('valor', 0)
+                        if isinstance(val, str): val = 0 
+                        
+                        op = Oportunidade(
+                            diario_id=id_gerado, # Usa a variável salva
+                            tipo="Detectado IA",
+                            objeto_resumido=str(item.get('objeto', 'N/A')),
+                            valor=float(val),
+                            favorecido=str(item.get('favorecido', 'N/A')),
+                            prazo_vigencia=str(item.get('prazo', 'N/A')),
+                            insight_venda=str(item.get('insight', ''))
+                        )
+                        session.add(op)
+                    except: pass
                 
                 session.commit()
-                print(f"--- SUCESSO: {contador} oportunidades salvas via OpenAI ---")
+                print(f"--- SUCESSO: Oportunidades salvas! ---")
 
             except Exception as e:
                 print(f"ERRO NA OPENAI: {e}")
 
-        session.close()
+        session.close() # Fecha a conexão só no final
         if os.path.exists(caminho): os.remove(caminho)
         
-        return {"status": "Sucesso", "id": novo_diario.id}
+        # Retorna o ID que salvamos lá em cima
+        return {"status": "Sucesso", "id": id_gerado}
 
     @cherrypy.expose
     @cherrypy.tools.json_out()
@@ -123,12 +124,5 @@ class GovTechAPI:
 
 if __name__ == '__main__':
     init_db()
-    # MANTENHA A PORTA 8080 PARA O COOLIFY (Padrão)
-    conf = {
-        'global': {
-            'server.socket_host': '0.0.0.0',
-            'server.socket_port': 9090, 
-            'server.max_request_body_size': 100 * 1024 * 1024
-        }
-    }
+    conf = {'global': {'server.socket_host': '0.0.0.0', 'server.socket_port': 9090, 'server.max_request_body_size': 100*1024*1024}}
     cherrypy.quickstart(GovTechAPI(), '/', conf)
