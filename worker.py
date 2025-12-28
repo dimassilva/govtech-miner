@@ -16,7 +16,7 @@ def buscar_diarios():
     
     # Busca dinâmica: Últimos 5 dias até hoje
     data_final = datetime.now()
-    data_inicial = data_final - timedelta(days=5)
+    data_inicial = data_final - timedelta(days=363)
     
     params = {
         "dataInicial": data_inicial.strftime("%Y-%m-%dT00:00:00"),
