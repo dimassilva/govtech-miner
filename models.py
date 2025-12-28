@@ -1,35 +1,40 @@
 from database import Base
 from sqlalchemy import Column, Integer, String, Float, Text, Date, ForeignKey, Boolean
-from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
-
-Base = declarative_base()
 
 class Diario(Base):
     __tablename__ = 'diarios'
+    
     id = Column(Integer, primary_key=True)
-    municipio = Column(String(100), nullable=False) # Ex: Lençóis Paulista
+    municipio = Column(String(100))
     data_publicacao = Column(Date)
     nome_arquivo = Column(String(255))
+    
+    # NOVOS CAMPOS VITAIS:
+    codigo_origem = Column(Integer, unique=True) # Ex: 1782 (ID do sistema deles)
+    numero_edicao = Column(Integer)              # Ex: 234
+    tipo_edicao = Column(String(10))             # Ex: "R" (Regular)
+    hash_origem = Column(String(100))            # Ex: "QtbVoc3hoKMACaV" (Para checagem rápida)
+    
+    # Hash do arquivo binário (nossa segurança extra)
+    hash_arquivo_binario = Column(String(64)) 
+    
     processado = Column(Boolean, default=False)
     
-    # Relacionamento
     oportunidades = relationship("Oportunidade", back_populates="diario")
 
 class Oportunidade(Base):
     __tablename__ = 'oportunidades'
+    
     id = Column(Integer, primary_key=True)
     diario_id = Column(Integer, ForeignKey('diarios.id'))
     
-    # DADOS VITAIS PARA O NEGÓCIO
-    tipo = Column(String(50))           # Dispensa, Inexigibilidade, Aditivo
-    numero_processo = Column(String(50)) # Ex: "Dispensa 014/2025"
-    objeto_resumido = Column(Text)      # O que é?
-    valor = Column(Float)               # R$ 553.677,78
-    favorecido = Column(String(200))    # Quem ganhou (CNPJ ou Nome)
-    prazo_vigencia = Column(String(100)) # "3 meses", "12 meses"
-    
-    # Inteligência (O valor agregado do seu SaaS)
-    insight_venda = Column(Text)        # Ex: "Contrato curto, vence em Março/26"
+    tipo = Column(String(50))
+    numero_processo = Column(String(50))
+    objeto_resumido = Column(Text)
+    valor = Column(Float)
+    favorecido = Column(String(200))
+    prazo_vigencia = Column(String(100))
+    insight_venda = Column(Text)
     
     diario = relationship("Diario", back_populates="oportunidades")
