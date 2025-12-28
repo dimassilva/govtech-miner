@@ -7,11 +7,8 @@ from database import init_db, db_session
 from models import Diario, Oportunidade
 from openai import OpenAI
 
-# --- PASSO 1: COLE SUA NOVA CHAVE AQUI DENTRO DAS ASPAS ---
-MINHA_CHAVE_OPENAI = "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" 
-
-# Inicializa cliente
-client = OpenAI(api_key=MINHA_CHAVE_OPENAI)
+api_key = os.getenv("OPENAI_API_KEY")
+client = OpenAI(api_key=api_key)
 
 class GovTechAPI:
     @cherrypy.expose
