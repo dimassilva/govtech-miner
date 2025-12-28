@@ -135,29 +135,55 @@ class GovTechAPI:
 
     @cherrypy.expose
     @cherrypy.tools.json_out()
-    def oportunidades(self):
+    # 1. Adicionamos 'edicao' na lista de parâmetros aceitos
+    def oportunidades(self, status=None, categoria=None, municipio=None, edicao=None):
         session = db_session()
-        ops = session.query(Oportunidade).join(Diario).order_by(Diario.data_publicacao.desc()).limit(50).all()
+        
+        # Inicia a query ligando Oportunidade e Diário
+        query = session.query(Oportunidade).join(Diario)
+        
+        # --- BLOCO DE FILTROS ---
+        
+        # Filtro de Status
+        if status:
+            query = query.filter(Oportunidade.status == status)
+            
+        # Filtro de Categoria (Busca parcial)
+        if categoria:
+            query = query.filter(Oportunidade.categoria.like(f"%{categoria}%"))
+            
+        # Filtro de Município
+        if municipio:
+            query = query.filter(Diario.municipio == municipio)
+            
+        # [NOVO] Filtro de Edição
+        if edicao:
+            # O número vem como string da URL, o banco converte automático ou usamos int()
+            query = query.filter(Diario.numero_edicao == edicao)
+
+        # ------------------------
+
+        # Ordena e limita
+        ops = query.order_by(Diario.data_publicacao.desc()).limit(50).all()
         
         lista = []
         for o in ops:
-            # GERA LINK ORIGINAL
-            link_original = f"[https://lencois.mentor.metaway.com.br/recurso/diario/editar/](https://lencois.mentor.metaway.com.br/recurso/diario/editar/){o.diario.codigo_origem}"
+            link_original = f"https://lencois.mentor.metaway.com.br/recurso/diario/editar/{o.diario.codigo_origem}"
 
             lista.append({
                 "id": o.id,
                 "municipio": o.diario.municipio,
                 "data_publicacao": str(o.diario.data_publicacao),
-                "link_documento": link_original, # LINK DA PROVA
-                "edicao": o.diario.numero_edicao,
+                "link_documento": link_original,
+                "edicao": o.diario.numero_edicao, # O número da edição
                 "processo": o.id_processo,
                 "categoria": o.categoria,
                 "objeto": o.objeto,
                 "valor": o.valor,
-                "status": o.status,
                 "vencedor": o.vencedor,
                 "cnpj": o.cnpj_vencedor,
-                "data_sessao": o.data_sessao,   # DATA VITAL PARA VENDAS
+                "status": o.status,
+                "data_sessao": o.data_sessao,
                 "insight": o.insight_venda
             })
             
