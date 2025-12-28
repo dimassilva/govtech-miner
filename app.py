@@ -256,36 +256,54 @@ class GovTechAPI:
         except Exception as e:
             print(f"Erro ao ler PDF: {e}")
 
+        # 5. Inteligência Artificial (VERSÃO DIAMANTE)
         if len(texto) > 50:
             hoje_str = datetime.now().strftime("%d/%m/%Y")
             
             prompt = f"""
+            Atue como um Especialista em Licitações Públicas.
             Analise o texto do Diário Oficial.
-            CONTEXTO: Hoje é dia {hoje_str}.
+            CONTEXTO TEMPORAL: Hoje é dia {hoje_str}.
             
-            OBJETIVO: Extrair oportunidades comerciais reais para fornecedores.
+            OBJETIVO: Classificar oportunidades de vendas governamentais.
             
-            REGRAS DE OURO (Siga estritamente):
-            1. IGNORAR REPASSES: Se for "Termo de Fomento", "Subvenção", "Repasse" ou "Convênio" com ONG/Associação, defina Categoria="Repasse" e Status="Informativo".
-            2. ADITIVOS NÃO SÃO VENDAS: Se for "Termo Aditivo", "Prorrogação de Contrato" ou "Supressão", o Status DEVE ser "Renovação" (nunca "Aberto"). O vencedor é a empresa citada.
-            3. AVISOS DE LICITAÇÃO:
-               - Se a data da sessão for FUTURA -> Status="Aberto".
-               - Se a data JÁ PASSOU -> Status="Encerrado".
+            REGRAS DE CLASSIFICAÇÃO (Prioridade Alta):
+            1. IGNORAR (Lixo): "Termo de Fomento", "Subvenção", "Repasse", "Convênio Social", "Processo Seletivo (RH)", "Concurso Público". 
+               -> Defina Categoria="Outros" e Status="Informativo".
+            
+            2. OPORTUNIDADES FRACASSADAS (Ouro): Se o texto disser "Licitação Deserta", "Fracassada" ou "Nenhum interessado".
+               -> Status="Fracassada". 
+               -> Insight="Ninguém apareceu! Grande chance de Venda Direta ou nova licitação urgente."
+            
+            3. BLOQUEIOS (Perda de Tempo): Se disser "Suspensão", "Revogação", "Anulação" ou "Cancelamento".
+               -> Status="Suspenso".
+               -> Insight="Processo parado. Não prepare proposta agora."
+            
+            4. ADITIVOS (Manutenção): "Prorrogação de Prazo", "Reajuste", "Supressão", "Aditivo contratual".
+               -> Status="Renovação".
+               -> Vencedor = Empresa citada.
+            
+            5. AVISOS DE COMPRA (Futuro): "Aviso de Licitação", "Pregão", "Tomada de Preços", "Chamada Pública".
+               - Data da Sessão FUTURA -> Status="Aberto".
+               - Data da Sessão PASSADA -> Status="Encerrado" (Perdeu o prazo).
                - Vencedor -> "Em Aberto".
-            4. RESULTADOS/CONTRATOS:
-               - Se tiver CNPJ e Valor definidos -> Status="Contratado".
-            5. VALOR: Esforce-se para encontrar o valor total (Global) ou estimado. Se for Registro de Preços, procure o valor total da ata.
             
-            Retorne JSON array:
-            - "id_processo": (Ex: "Pregão 90/2025", "Aditivo 01/24")
-            - "categoria": (Ex: "Limpeza", "Obras", "TI", "Repasse")
-            - "objeto": (Resumo claro do que é)
-            - "valor": (Float. Se não achar, 0)
-            - "vencedor": (Nome da empresa. Se for Aviso, "Em Aberto")
+            6. RESULTADOS (Passado): "Homologação", "Adjudicação", "Extrato de Contrato", "Dispensa Ratificada".
+               - Status="Contratado".
+               - Extraia o Vencedor e CNPJ.
+            
+            7. VALOR: Busque o "Valor Global", "Valor Total" ou a soma dos lotes. Se for Registro de Preços, é o valor total da Ata.
+
+            Retorne JSON array puro:
+            - "id_processo": (Ex: "Pregão 90/2025")
+            - "categoria": (Ex: "Limpeza", "Obras", "TI", "Alimentos")
+            - "objeto": (Resumo claro do produto/serviço)
+            - "valor": (Float. 0 se não encontrar)
+            - "vencedor": (Nome da empresa ou "Em Aberto")
             - "cnpj": (CNPJ ou null)
-            - "data_sessao": (Data da disputa DD/MM/AAAA HH:MM. Se for contrato, null)
-            - "status": ("Aberto", "Encerrado", "Contratado", "Renovação", "Informativo")
-            - "insight": (Dica curta. Ex: "Renovação de contrato por 12 meses" ou "Oportunidade nova! Prepare documentação" e uma dica mais compreensivel para o usuario)
+            - "data_sessao": (Data da disputa DD/MM/AAAA HH:MM. Null se não houver)
+            - "status": ("Aberto", "Encerrado", "Contratado", "Renovação", "Suspenso", "Fracassada", "Informativo")
+            - "insight": (Uma frase estratégica baseada no status. Ex: "Licitação deserta, ligue no órgão!")
 
             Texto: {texto[:15000]}
             """
