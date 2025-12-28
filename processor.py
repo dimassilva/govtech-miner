@@ -4,7 +4,7 @@ import json
 import os
 
 # --- CONFIGURE SUA CHAVE AQUI ---
-openai.api_key = "sk-proj-S-vEB_S0e0q7Qp2e3Hl74icD73JwnvSKjMLbgCU27HNEEVY4OqLNCxNPsbG4bES4S7IT3O0Z-RT3BlbkFJ9doD3kTGK7npJpGKR4wVKeOorTbrfWDrTaTyu_ArJORaBetjK0MSDXPjDhrnyZ-mIKZ1-YG_oAsk-..." # Coloque sua chave da OpenAI aqui ou use os.getenv("OPENAI_API_KEY")
+openai.api_key = "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" # Coloque sua chave da OpenAI aqui ou use os.getenv("OPENAI_API_KEY")
 
 class PDFProcessor:
     def extrair_texto_relevante(self, pdf_path):
