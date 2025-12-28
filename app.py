@@ -1,22 +1,22 @@
 import cherrypy
 import os
 import pdfplumber
-# MUDANÇA 1: Importação atualizada para a versão nova
-from openai import OpenAI
 import json
 from datetime import datetime
 from database import init_db, db_session, Diario, Oportunidade
 
-# MUDANÇA 2: Inicialização do Cliente
-# Se estiver usando variável de ambiente no Coolify, ele pega automático.
-# Se for colocar a chave direta, substitua o os.getenv(...) pela string "sk-..."
-api_key = os.getenv("OPENAI_API_KEY", "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") # <--- COLOQUE SUA CHAVE AQUI SE NÃO USAR ENV
-client = OpenAI(api_key=api_key)
+# --- MUDANÇA 1: Nova forma de importar a OpenAI ---
+from openai import OpenAI
+
+# --- MUDANÇA 2: Inicialização do Cliente ---
+# O cliente pega a chave automaticamente da variável de ambiente OPENAI_API_KEY do Coolify
+# Se quiser forçar no código, use: client = OpenAI(api_key="sk-...")
+client = OpenAI()
 
 class GovTechAPI:
     @cherrypy.expose
     def index(self):
-        return "API GovTech Online (v1.1 - OpenAI Updated)."
+        return "API GovTech Online (v2 - Fixed)."
 
     @cherrypy.expose
     @cherrypy.tools.json_out()
@@ -51,49 +51,55 @@ class GovTechAPI:
         session.add(novo_diario)
         session.commit()
 
-        # 4. Extrai Texto do PDF
+        # 4. Extrai Texto
         texto = ""
         try:
             with pdfplumber.open(caminho) as pdf:
                 for page in pdf.pages:
                     t = page.extract_text() or ""
-                    # Filtro simples para economizar tokens
+                    # Filtro simples para economizar dinheiro/tokens
                     if any(x in t.upper() for x in ["DISPENSA", "LICITAÇÃO", "CONTRATAÇÃO", "ADITIVO"]):
                         texto += t + "\n"
         except Exception as e:
             print(f"Erro ao ler PDF: {e}")
 
-        # 5. Chama a IA (SINTAXE NOVA)
-        # Só chama se tiver texto suficiente
+        # 5. Chama a IA (SINTAXE NOVA CORRIGIDA)
         if len(texto) > 50:
             prompt = f"""
-            Extraia as oportunidades de negócio deste Diário Oficial em JSON.
-            Retorne APENAS um array JSON puro (sem ```json) com chaves:
-            "objeto" (resumo), "valor" (numero float), "favorecido", "prazo", "insight" (dica de venda).
+            Analise o texto de Diário Oficial abaixo.
+            Extraia licitações, dispensas ou contratos.
+            Retorne APENAS um JSON array puro (sem ```json no inicio) com os campos:
+            "objeto" (resumo), "valor" (numero float), "favorecido", "prazo", "insight" (dica curta).
+            
             Texto: {texto[:15000]}
             """
             
             try:
-                # MUDANÇA 3: Chamada atualizada para client.chat.completions.create
+                # --- MUDANÇA 3: O comando mudou de ChatCompletion.create para client.chat.completions.create ---
                 resp = client.chat.completions.create(
                     model="gpt-3.5-turbo",
                     messages=[{"role": "user", "content": prompt}],
                     temperature=0.1
                 )
                 
+                # Tratamento da resposta
                 conteudo = resp.choices[0].message.content.strip()
-                # Limpeza caso a IA mande markdown
-                if conteudo.startswith("```json"): conteudo = conteudo[7:-3]
+                # Remove markdown se a IA colocar
+                if conteudo.startswith("```json"): 
+                    conteudo = conteudo[7:-3]
+                elif conteudo.startswith("```"):
+                    conteudo = conteudo[3:-3]
                 
                 dados_ia = json.loads(conteudo)
                 
+                # Salva as oportunidades
                 contador = 0
                 for item in dados_ia:
                     op = Oportunidade(
                         diario_id=novo_diario.id,
-                        tipo="IA Detectada",
+                        tipo="Detectado IA",
                         objeto_resumido=item.get('objeto', 'N/A'),
-                        valor=float(item.get('valor', 0)),
+                        valor=float(item.get('valor', 0) or 0), # Proteção contra null
                         favorecido=item.get('favorecido', 'N/A'),
                         prazo_vigencia=item.get('prazo', 'N/A'),
                         insight_venda=item.get('insight', '')
@@ -102,15 +108,13 @@ class GovTechAPI:
                     contador += 1
                 
                 session.commit()
-                print(f"--- SUCESSO: {contador} oportunidades salvas! ---")
-                
+                print(f"--- SUCESSO: {contador} oportunidades salvas via OpenAI ---")
+
             except Exception as e:
-                print(f"Erro CRÍTICO na OpenAI: {e}")
-                # Log extra para debug
-                if 'resp' in locals(): print(resp)
+                print(f"ERRO NA OPENAI: {e}")
 
         session.close()
-        # Remove arquivo para não encher o disco
+        # Remove o arquivo para não encher o disco do Coolify
         if os.path.exists(caminho): os.remove(caminho)
         
         return {"status": "Sucesso", "id": novo_diario.id}
@@ -119,22 +123,19 @@ class GovTechAPI:
     @cherrypy.tools.json_out()
     def oportunidades(self):
         session = db_session()
-        # Traz as mais recentes primeiro
-        ops = session.query(Oportunidade).join(Diario).order_by(Diario.data_publicacao.desc()).limit(50).all()
-        lista = []
-        for o in ops:
-            lista.append({
-                "id": o.id,
-                "data": str(o.diario.data_publicacao),
-                "edicao": o.diario.numero_edicao,
-                "objeto": o.objeto_resumido,
-                "valor": o.valor,
-                "vencedor": o.favorecido,
-                "insight": o.insight_venda
-            })
-        session.close()
-        return lista
+        # Traz as 50 últimas
+        ops = session.query(Oportunidade).limit(50).all()
+        # Converte para dict para retornar JSON
+        return [{"id": o.id, "objeto": o.objeto_resumido, "valor": o.valor, "vencedor": o.favorecido} for o in ops]
 
 if __name__ == '__main__':
     init_db()
-    cherrypy.quickstart(GovTechAPI(), '/', {'global': {'server.socket_host': '0.0.0.0', 'server.socket_port': 9090}})
+    # Configuração correta para Docker/Coolify
+    conf = {
+        'global': {
+            'server.socket_host': '0.0.0.0',
+            'server.socket_port': 9090,
+            'server.max_request_body_size': 100 * 1024 * 1024 # 100MB
+        }
+    }
+    cherrypy.quickstart(GovTechAPI(), '/', conf)
