@@ -1,130 +1,140 @@
 import cherrypy
 import os
-import hashlib
+import pdfplumber
+# MUDANÇA 1: Importação atualizada para a versão nova
+from openai import OpenAI
+import json
 from datetime import datetime
-from database import init_db, db_session
-from models import Diario, Oportunidade
-from processor import PDFProcessor
+from database import init_db, db_session, Diario, Oportunidade
+
+# MUDANÇA 2: Inicialização do Cliente
+# Se estiver usando variável de ambiente no Coolify, ele pega automático.
+# Se for colocar a chave direta, substitua o os.getenv(...) pela string "sk-..."
+api_key = os.getenv("OPENAI_API_KEY", "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") # <--- COLOQUE SUA CHAVE AQUI SE NÃO USAR ENV
+client = OpenAI(api_key=api_key)
 
 class GovTechAPI:
-    def __init__(self):
-        self.processor = PDFProcessor()
-
-    def calcular_hash(self, caminho_arquivo):
-        sha256 = hashlib.sha256()
-        with open(caminho_arquivo, "rb") as f:
-            for bloco in iter(lambda: f.read(4096), b""):
-                sha256.update(bloco)
-        return sha256.hexdigest()
-
     @cherrypy.expose
     def index(self):
-        return "Servidor GovTech Ativo. Use /oportunidades para ver os dados."
+        return "API GovTech Online (v1.1 - OpenAI Updated)."
 
     @cherrypy.expose
     @cherrypy.tools.json_out()
     def upload(self, arquivo_pdf, codigo, edicao, hash_origem, data_pub):
-        """Recebe o PDF do Crawler, verifica duplicidade e processa."""
         session = db_session()
         
-        # 1. Verifica duplicidade pelo ID da prefeitura (Mais rápido)
-        existe = session.query(Diario).filter_by(codigo_origem=codigo).first()
-        if existe:
+        # 1. Verifica se já existe
+        if session.query(Diario).filter_by(codigo_origem=codigo).first():
             session.close()
-            return {"status": "Ignorado", "msg": f"Edição {edicao} já processada."}
+            return {"status": "Ignorado", "msg": "Já existe."}
 
-        # 2. Salva o arquivo
+        # 2. Salva arquivo local
         if not os.path.exists('uploads'): os.makedirs('uploads')
-        caminho_final = os.path.join('uploads', arquivo_pdf.filename)
+        caminho = os.path.join('uploads', arquivo_pdf.filename)
         
-        with open(caminho_final, 'wb') as out:
+        with open(caminho, 'wb') as out:
             while True:
                 data = arquivo_pdf.file.read(8192)
                 if not data: break
                 out.write(data)
 
-        # 3. Hash binário (Segurança extra)
-        hash_bin = self.calcular_hash(caminho_final)
+        # 3. Cria registro no Banco
+        novo_diario = Diario(
+            municipio="Lençóis Paulista",
+            data_publicacao=datetime.strptime(data_pub, "%Y-%m-%d").date(),
+            nome_arquivo=arquivo_pdf.filename,
+            codigo_origem=int(codigo),
+            numero_edicao=int(edicao),
+            hash_origem=hash_origem,
+            processado=True
+        )
+        session.add(novo_diario)
+        session.commit()
 
+        # 4. Extrai Texto do PDF
+        texto = ""
         try:
-            # 4. Cria o Registro Pai (Diario)
-            novo_diario = Diario(
-                municipio="Lençóis Paulista",
-                data_publicacao=datetime.strptime(data_pub, "%Y-%m-%d").date(),
-                nome_arquivo=arquivo_pdf.filename,
-                codigo_origem=int(codigo),
-                numero_edicao=int(edicao),
-                hash_origem=hash_origem,
-                hash_arquivo_binario=hash_bin,
-                processado=False
-            )
-            session.add(novo_diario)
-            session.commit()
+            with pdfplumber.open(caminho) as pdf:
+                for page in pdf.pages:
+                    t = page.extract_text() or ""
+                    # Filtro simples para economizar tokens
+                    if any(x in t.upper() for x in ["DISPENSA", "LICITAÇÃO", "CONTRATAÇÃO", "ADITIVO"]):
+                        texto += t + "\n"
+        except Exception as e:
+            print(f"Erro ao ler PDF: {e}")
 
-            # 5. Processamento IA
-            texto = self.processor.extrair_texto_relevante(caminho_final)
-            oportunidades = self.processor.analisar_com_ia(texto)
-
-            # 6. Salva as Oportunidades (Filhos)
-            contador = 0
-            if oportunidades:
-                for item in oportunidades:
-                    nova_op = Oportunidade(
+        # 5. Chama a IA (SINTAXE NOVA)
+        # Só chama se tiver texto suficiente
+        if len(texto) > 50:
+            prompt = f"""
+            Extraia as oportunidades de negócio deste Diário Oficial em JSON.
+            Retorne APENAS um array JSON puro (sem ```json) com chaves:
+            "objeto" (resumo), "valor" (numero float), "favorecido", "prazo", "insight" (dica de venda).
+            Texto: {texto[:15000]}
+            """
+            
+            try:
+                # MUDANÇA 3: Chamada atualizada para client.chat.completions.create
+                resp = client.chat.completions.create(
+                    model="gpt-3.5-turbo",
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0.1
+                )
+                
+                conteudo = resp.choices[0].message.content.strip()
+                # Limpeza caso a IA mande markdown
+                if conteudo.startswith("```json"): conteudo = conteudo[7:-3]
+                
+                dados_ia = json.loads(conteudo)
+                
+                contador = 0
+                for item in dados_ia:
+                    op = Oportunidade(
                         diario_id=novo_diario.id,
-                        tipo=item.get('tipo', 'Outros'),
-                        numero_processo=item.get('numero_processo', ''),
-                        objeto_resumido=item.get('objeto', ''),
+                        tipo="IA Detectada",
+                        objeto_resumido=item.get('objeto', 'N/A'),
                         valor=float(item.get('valor', 0)),
-                        favorecido=item.get('favorecido', ''),
-                        prazo_vigencia=item.get('prazo', ''),
+                        favorecido=item.get('favorecido', 'N/A'),
+                        prazo_vigencia=item.get('prazo', 'N/A'),
                         insight_venda=item.get('insight', '')
                     )
-                    session.add(nova_op)
+                    session.add(op)
                     contador += 1
                 
-                novo_diario.processado = True
                 session.commit()
+                print(f"--- SUCESSO: {contador} oportunidades salvas! ---")
+                
+            except Exception as e:
+                print(f"Erro CRÍTICO na OpenAI: {e}")
+                # Log extra para debug
+                if 'resp' in locals(): print(resp)
 
-            return {
-                "status": "Sucesso", 
-                "diario_id": novo_diario.id, 
-                "ops_encontradas": contador
-            }
-
-        except Exception as e:
-            session.rollback()
-            return {"status": "Erro", "erro": str(e)}
-        finally:
-            session.close()
+        session.close()
+        # Remove arquivo para não encher o disco
+        if os.path.exists(caminho): os.remove(caminho)
+        
+        return {"status": "Sucesso", "id": novo_diario.id}
 
     @cherrypy.expose
     @cherrypy.tools.json_out()
     def oportunidades(self):
-        """API para o Frontend consumir"""
         session = db_session()
-        # Traz as 50 últimas
+        # Traz as mais recentes primeiro
         ops = session.query(Oportunidade).join(Diario).order_by(Diario.data_publicacao.desc()).limit(50).all()
         lista = []
-        for op in ops:
+        for o in ops:
             lista.append({
-                "id": op.id,
-                "data": str(op.diario.data_publicacao),
-                "edicao": op.diario.numero_edicao,
-                "objeto": op.objeto_resumido,
-                "valor": op.valor,
-                "insight": op.insight_venda,
-                "vencedor": op.favorecido
+                "id": o.id,
+                "data": str(o.diario.data_publicacao),
+                "edicao": o.diario.numero_edicao,
+                "objeto": o.objeto_resumido,
+                "valor": o.valor,
+                "vencedor": o.favorecido,
+                "insight": o.insight_venda
             })
         session.close()
         return lista
 
 if __name__ == '__main__':
     init_db()
-    conf = {
-        'global': {
-            'server.socket_host': '0.0.0.0',
-            'server.socket_port': 9090,
-            'server.max_request_body_size': 100 * 1024 * 1024 # 100MB
-        }
-    }
-    cherrypy.quickstart(GovTechAPI(), '/', conf)
+    cherrypy.quickstart(GovTechAPI(), '/', {'global': {'server.socket_host': '0.0.0.0', 'server.socket_port': 8080}})
