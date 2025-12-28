@@ -3,18 +3,217 @@ import os
 import pdfplumber
 import json
 from datetime import datetime
-from database import init_db, db_session, Diario, Oportunidade
+from database import init_db, db_session, Diario, Oportunidade, Usuario, Alerta, Favorito
 from openai import OpenAI
 
 # --- IMPORTANTE: SUA CHAVE AQUI ---
 api_key = os.getenv("OPENAI_API_KEY")
 client = OpenAI(api_key=api_key)
 
+# --- CONFIGURAÇÃO DE CORS (Para o Frontend funcionar) ---
+def cors():
+    if cherrypy.request.method == 'OPTIONS':
+        # Pré-voo (Pre-flight request)
+        cherrypy.response.headers['Access-Control-Allow-Methods'] = 'POST, GET, DELETE, PUT, OPTIONS'
+        cherrypy.response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+        cherrypy.response.headers['Access-Control-Allow-Origin'] = '*'
+        return True
+    cherrypy.response.headers['Access-Control-Allow-Origin'] = '*'
+
+cherrypy.tools.cors = cherrypy.Tool('before_handler', cors)
+
+# ==========================================
+# 1. CONTROLLER DE USUÁRIOS (/usuarios)
+# ==========================================
+class UsuarioController:
+    @cherrypy.expose
+    @cherrypy.tools.json_in()
+    @cherrypy.tools.json_out()
+    def login(self):
+        # Recebe JSON: { "email": "...", "senha_hash": "..." }
+        data = cherrypy.request.json
+        session = db_session()
+        
+        try:
+            # Busca usuário pelo email
+            user = session.query(Usuario).filter_by(email=data.get('email')).first()
+            
+            # Verifica senha (em produção, use hash real como bcrypt)
+            if user and user.senha_hash == data.get('senha_hash'):
+                response = {
+                    "id": user.id,
+                    "nome": user.nome,
+                    "email": user.email,
+                    "empresa_cnpj": user.empresa_cnpj,
+                    "tema": user.tema
+                }
+                return response
+            else:
+                cherrypy.response.status = 401
+                return {"message": "Email ou senha inválidos."}
+        except Exception as e:
+            cherrypy.response.status = 500
+            return {"message": str(e)}
+        finally:
+            session.close()
+
+    @cherrypy.expose
+    @cherrypy.tools.json_in()
+    @cherrypy.tools.json_out()
+    def register(self):
+        # Recebe JSON: { "nome": "...", "email": "...", "senha_hash": "..." }
+        data = cherrypy.request.json
+        session = db_session()
+        
+        try:
+            # Verifica duplicidade
+            if session.query(Usuario).filter_by(email=data.get('email')).first():
+                cherrypy.response.status = 409 # Conflict
+                return {"message": "Este e-mail já está cadastrado."}
+            
+            novo_user = Usuario(
+                nome=data.get('nome'),
+                email=data.get('email'),
+                senha_hash=data.get('senha_hash'),
+                empresa_cnpj=data.get('empresa_cnpj', None),
+                tema='light'
+            )
+            session.add(novo_user)
+            session.commit()
+            
+            response = {
+                "id": novo_user.id,
+                "nome": novo_user.nome,
+                "email": novo_user.email,
+                "tema": novo_user.tema
+            }
+            return response
+        except Exception as e:
+            cherrypy.response.status = 500
+            return {"message": f"Erro ao criar conta: {str(e)}"}
+        finally:
+            session.close()
+
+    @cherrypy.expose
+    @cherrypy.tools.json_out()
+    def default(self, id_usuario):
+        # Permite DELETE /usuarios/{id}
+        if cherrypy.request.method == 'DELETE':
+            session = db_session()
+            try:
+                user = session.query(Usuario).filter_by(id=id_usuario).first()
+                if user:
+                    session.delete(user)
+                    session.commit()
+                    return {"status": "Conta excluída"}
+                else:
+                    cherrypy.response.status = 404
+                    return {"message": "Usuário não encontrado"}
+            finally:
+                session.close()
+
+# ==========================================
+# 2. CONTROLLER DE KEYWORDS (/keywords)
+# ==========================================
+class KeywordController:
+    @cherrypy.expose
+    @cherrypy.tools.json_out()
+    def index(self, usuario_id=None, termo=None):
+        session = db_session()
+        try:
+            # GET: Listar todas as keywords de um usuário
+            if cherrypy.request.method == 'GET' and usuario_id:
+                alerts = session.query(Alerta).filter_by(usuario_id=usuario_id).all()
+                res = [{"id": a.id, "termo": a.termo} for a in alerts]
+                return res
+            
+            # POST: Adicionar nova keyword
+            elif cherrypy.request.method == 'POST':
+                # Ler corpo manualmente pois index lida com GET e POST
+                raw_body = cherrypy.request.body.read()
+                if not raw_body: return []
+                data = json.loads(raw_body)
+                
+                novo = Alerta(usuario_id=data['usuario_id'], termo=data['termo'])
+                session.add(novo)
+                session.commit()
+                return {"status": "Adicionado", "termo": data['termo']}
+                
+            # DELETE: Remover keyword específica
+            elif cherrypy.request.method == 'DELETE' and usuario_id and termo:
+                alert = session.query(Alerta).filter_by(usuario_id=usuario_id, termo=termo).first()
+                if alert:
+                    session.delete(alert)
+                    session.commit()
+                return {"status": "Removido"}
+        finally:
+            session.close()
+
+# ==========================================
+# 3. CONTROLLER DE FAVORITOS (/favoritos)
+# ==========================================
+class FavoritoController:
+    @cherrypy.expose
+    @cherrypy.tools.json_out()
+    def index(self, usuario_id=None):
+        session = db_session()
+        try:
+            # GET: Listar favoritos do usuário
+            if cherrypy.request.method == 'GET' and usuario_id:
+                favs = session.query(Favorito).join(Oportunidade).join(Diario)\
+                              .filter(Favorito.usuario_id == usuario_id).all()
+                
+                lista = []
+                for f in favs:
+                    op = f.oportunidade
+                    lista.append({
+                        "id": op.id,
+                        "processo": op.id_processo,
+                        "objeto": op.objeto,
+                        "valor": op.valor,
+                        "status": op.status,
+                        "municipio": op.diario.municipio,
+                        "nota": f.notas_comerciais
+                    })
+                return lista
+            
+            # POST: Adicionar ou Remover (Toggle)
+            elif cherrypy.request.method == 'POST':
+                raw_body = cherrypy.request.body.read()
+                data = json.loads(raw_body)
+                uid = data['usuario_id']
+                oid = data['oportunidade_id']
+                nota = data.get('notas_comerciais', '')
+                
+                existente = session.query(Favorito).filter_by(usuario_id=uid, oportunidade_id=oid).first()
+                
+                if existente:
+                    session.delete(existente) # Remove se já existe
+                    msg = "Removido"
+                else:
+                    novo = Favorito(usuario_id=uid, oportunidade_id=oid, notas_comerciais=nota)
+                    session.add(novo)
+                    msg = "Adicionado"
+                    
+                session.commit()
+                return {"status": msg}
+        finally:
+            session.close()
+
+# ==========================================
+# 4. API PRINCIPAL (Root /)
+# ==========================================
 class GovTechAPI:
+    # Conecta os sub-controladores
+    usuarios = UsuarioController()
+    keywords = KeywordController()
+    favoritos = FavoritoController()
+
     @cherrypy.expose
     def index(self):
-        return "API GovTech Gold (Porta 9090)."
+        return "API GovTech Gold (SaaS Ativo - v7)."
 
+    # --- UPLOAD DE PDF (MANTIDO DO SEU CÓDIGO) ---
     @cherrypy.expose
     @cherrypy.tools.json_out()
     def upload(self, arquivo_pdf, codigo, edicao, hash_origem, data_pub):
@@ -50,13 +249,12 @@ class GovTechAPI:
         session.commit()
         id_pai = novo_diario.id 
 
-        # 4. Extrai Texto (Com filtro amplo)
+        # 4. Extrai Texto
         texto = ""
         try:
             with pdfplumber.open(caminho) as pdf:
                 for page in pdf.pages:
                     t = page.extract_text() or ""
-                    # Filtro que pega tanto Compras (Passado) quanto Licitações (Futuro)
                     if any(x in t.upper() for x in ["DISPENSA", "LICITAÇÃO", "PREGÃO", "CONTRATO", "ADITIVO", "RATIFICAÇÃO", "AVISO"]):
                         texto += t + "\n"
             
@@ -64,7 +262,7 @@ class GovTechAPI:
         except Exception as e:
             print(f"Erro ao ler PDF: {e}")
 
-        # 5. Inteligência Artificial (COM LÓGICA TEMPORAL CORRIGIDA)
+        # 5. Inteligência Artificial
         if len(texto) > 50:
             hoje_str = datetime.now().strftime("%d/%m/%Y")
             
@@ -126,7 +324,7 @@ class GovTechAPI:
                             valor=val,
                             vencedor=str(item.get('vencedor', 'Em Aberto')),
                             cnpj_vencedor=str(item.get('cnpj', '')),
-                            data_sessao=str(item.get('data_sessao', '')), # CAMPO NOVO
+                            data_sessao=str(item.get('data_sessao', '')),
                             prazo=str(item.get('prazo', '')),
                             status=str(item.get('status', 'Detectado')),
                             insight_venda=str(item.get('insight', ''))
@@ -146,49 +344,40 @@ class GovTechAPI:
         if os.path.exists(caminho): os.remove(caminho)
         return {"status": "Sucesso", "id": id_pai}
 
+    # --- OPORTUNIDADES (COM FILTROS COMPLETOS) ---
     @cherrypy.expose
     @cherrypy.tools.json_out()
-    # 1. Adicionamos 'edicao' na lista de parâmetros aceitos
     def oportunidades(self, status=None, categoria=None, municipio=None, edicao=None):
         session = db_session()
         
-        # Inicia a query ligando Oportunidade e Diário
         query = session.query(Oportunidade).join(Diario)
         
-        # --- BLOCO DE FILTROS ---
-        
-        # Filtro de Status
-        if status:
+        # Filtros
+        if status and status not in ['Todos', 'Todas']:
             query = query.filter(Oportunidade.status == status)
-            
-        # Filtro de Categoria (Busca parcial)
-        if categoria:
+        
+        if categoria and categoria not in ['Todos', 'Todas']:
             query = query.filter(Oportunidade.categoria.like(f"%{categoria}%"))
             
-        # Filtro de Município
         if municipio:
             query = query.filter(Diario.municipio == municipio)
             
-        # [NOVO] Filtro de Edição
         if edicao:
-            # O número vem como string da URL, o banco converte automático ou usamos int()
             query = query.filter(Diario.numero_edicao == edicao)
 
-        # ------------------------
-
-        # Ordena e limita
-        ops = query.order_by(Diario.data_publicacao.desc()).limit(50).all()
+        # Limite aumentado para 100
+        ops = query.order_by(Diario.data_publicacao.desc()).limit(100).all()
         
         lista = []
         for o in ops:
-            link_original = f"https://lencois.mentor.metaway.com.br/recurso/diario/editar/{o.diario.codigo_origem}"
+            link_original = f"[https://lencois.mentor.metaway.com.br/recurso/diario/editar/](https://lencois.mentor.metaway.com.br/recurso/diario/editar/){o.diario.codigo_origem}"
 
             lista.append({
                 "id": o.id,
                 "municipio": o.diario.municipio,
                 "data_publicacao": str(o.diario.data_publicacao),
                 "link_documento": link_original,
-                "edicao": o.diario.numero_edicao, # O número da edição
+                "edicao": o.diario.numero_edicao,
                 "processo": o.id_processo,
                 "categoria": o.categoria,
                 "objeto": o.objeto,
@@ -205,7 +394,16 @@ class GovTechAPI:
 
 if __name__ == '__main__':
     init_db()
-    # RODANDO NA PORTA 9090
-    conf = {'global': {'server.socket_host': '0.0.0.0', 'server.socket_port': 9090, 'server.max_request_body_size': 100*1024*1024}}
-    print("--- API GOVTECH INICIADA NA PORTA 9090 ---")
+    # Configuração de Servidor e CORS
+    conf = {
+        'global': {
+            'server.socket_host': '0.0.0.0',
+            'server.socket_port': 9090,
+            'server.max_request_body_size': 100*1024*1024
+        },
+        '/': {
+            'tools.cors.on': True
+        }
+    }
+    print("--- API GOVTECH (LOGIN + SAAS + ALERTAS) RODANDO NA PORTA 9090 ---")
     cherrypy.quickstart(GovTechAPI(), '/', conf)
