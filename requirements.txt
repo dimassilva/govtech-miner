@@ -1,0 +1,5 @@
+cherrypy
+sqlalchemy
+pdfplumber
+openai
+python-dotenv
