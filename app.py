@@ -162,5 +162,5 @@ class GovTechAPI:
 
 if __name__ == '__main__':
     init_db()
-    conf = {'global': {'server.socket_host': '0.0.0.0', 'server.socket_port': 8080}}
+    conf = {'global': {'server.socket_host': '0.0.0.0', 'server.socket_port': 9090}}
     cherrypy.quickstart(GovTechAPI(), '/', conf)
