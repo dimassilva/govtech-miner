@@ -64,24 +64,34 @@ class GovTechAPI:
         except Exception as e:
             print(f"Erro ao ler PDF: {e}")
 
-        # 5. Inteligência Artificial (Prompt Híbrido: Futuro e Passado)
+        # 5. Inteligência Artificial (COM DATA DE HOJE)
         if len(texto) > 50:
+            # Pegamos a data de hoje para a IA ter referência
+            hoje_str = datetime.now().strftime("%d/%m/%Y")
+            
             prompt = f"""
             Analise o texto deste Diário Oficial.
-            Busque dois tipos de dados:
-            1. RESULTADOS (Quem ganhou): Homologações, Extratos, Dispensas Ratificadas.
-            2. AVISOS (Futuro): Avisos de Licitação, Pregões Agendados, Chamamentos.
+            CONTEXTO ATUAL: Hoje é dia {hoje_str}.
             
-            Retorne APENAS um JSON array com estas chaves:
+            Busque dois tipos de dados:
+            1. RESULTADOS (Passado): Homologações, Extratos, Ratificações.
+            2. AVISOS (Futuro): Licitações marcadas.
+            
+            REGRAS DE STATUS:
+            - Se encontrar uma data de sessão ANTERIOR a {hoje_str}, o status DEVE ser "Encerrado" (mesmo que o texto diga 'Aviso de Licitação').
+            - Se a data for POSTERIOR a {hoje_str}, o status é "Aberto".
+            - Se for um resultado de julgamento/contrato, o status é "Contratado".
+            
+            Retorne JSON array:
             - "id_processo": (Ex: "Pregão 90/2025")
-            - "categoria": (Ex: "Limpeza", "Obras", "TI")
-            - "objeto": (Resumo do que está sendo comprado)
-            - "valor": (Valor estimado ou contratado. 0 se não tiver)
-            - "vencedor": (Se for Resultado, nome da empresa. Se for Aviso, "Em Aberto")
-            - "cnpj": (CNPJ se houver)
-            - "data_sessao": (Se for Aviso/Futuro, a data/hora da disputa. Ex: "25/01/2026". Se for resultado, null)
-            - "status": ("Aberto" se for futuro, "Contratado" se já acabou)
-            - "insight": (Dica curta para vendedor)
+            - "categoria": (Ex: "Limpeza", "Obras")
+            - "objeto": (Resumo)
+            - "valor": (Float ou 0)
+            - "vencedor": (Nome ou "Em Aberto")
+            - "cnpj": (CNPJ ou null)
+            - "data_sessao": (Ex: "04/09/2025 09h" ou null)
+            - "status": ("Aberto", "Encerrado" ou "Contratado")
+            - "insight": (Dica para o vendedor)
 
             Texto: {texto[:15000]}
             """
