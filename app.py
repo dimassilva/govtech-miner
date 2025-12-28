@@ -5,19 +5,19 @@ import json
 from datetime import datetime
 from database import init_db, db_session
 from models import Diario, Oportunidade
-
-# --- MUDANÇA 1: Nova forma de importar a OpenAI ---
 from openai import OpenAI
 
-# --- MUDANÇA 2: Inicialização do Cliente ---
-# O cliente pega a chave automaticamente da variável de ambiente OPENAI_API_KEY do Coolify
-# Se quiser forçar no código, use: client = OpenAI(api_key="sk-...")
-client = OpenAI()
+# --- CORREÇÃO AQUI ---
+# Cole sua chave dentro das aspas abaixo
+MINHA_CHAVE_OPENAI = "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"  # <--- COLE SUA CHAVE AQUI
+
+# Inicializa o cliente forçando a chave
+client = OpenAI(api_key=MINHA_CHAVE_OPENAI)
 
 class GovTechAPI:
     @cherrypy.expose
     def index(self):
-        return "API GovTech Online (v2 - Fixed)."
+        return "API GovTech Online (v3 - Key Hardcoded)."
 
     @cherrypy.expose
     @cherrypy.tools.json_out()
@@ -58,13 +58,12 @@ class GovTechAPI:
             with pdfplumber.open(caminho) as pdf:
                 for page in pdf.pages:
                     t = page.extract_text() or ""
-                    # Filtro simples para economizar dinheiro/tokens
                     if any(x in t.upper() for x in ["DISPENSA", "LICITAÇÃO", "CONTRATAÇÃO", "ADITIVO"]):
                         texto += t + "\n"
         except Exception as e:
             print(f"Erro ao ler PDF: {e}")
 
-        # 5. Chama a IA (SINTAXE NOVA CORRIGIDA)
+        # 5. Chama a IA
         if len(texto) > 50:
             prompt = f"""
             Analise o texto de Diário Oficial abaixo.
@@ -76,16 +75,13 @@ class GovTechAPI:
             """
             
             try:
-                # --- MUDANÇA 3: O comando mudou de ChatCompletion.create para client.chat.completions.create ---
                 resp = client.chat.completions.create(
                     model="gpt-3.5-turbo",
                     messages=[{"role": "user", "content": prompt}],
                     temperature=0.1
                 )
                 
-                # Tratamento da resposta
                 conteudo = resp.choices[0].message.content.strip()
-                # Remove markdown se a IA colocar
                 if conteudo.startswith("```json"): 
                     conteudo = conteudo[7:-3]
                 elif conteudo.startswith("```"):
@@ -93,14 +89,13 @@ class GovTechAPI:
                 
                 dados_ia = json.loads(conteudo)
                 
-                # Salva as oportunidades
                 contador = 0
                 for item in dados_ia:
                     op = Oportunidade(
                         diario_id=novo_diario.id,
                         tipo="Detectado IA",
                         objeto_resumido=item.get('objeto', 'N/A'),
-                        valor=float(item.get('valor', 0) or 0), # Proteção contra null
+                        valor=float(item.get('valor', 0) or 0),
                         favorecido=item.get('favorecido', 'N/A'),
                         prazo_vigencia=item.get('prazo', 'N/A'),
                         insight_venda=item.get('insight', '')
@@ -115,7 +110,6 @@ class GovTechAPI:
                 print(f"ERRO NA OPENAI: {e}")
 
         session.close()
-        # Remove o arquivo para não encher o disco do Coolify
         if os.path.exists(caminho): os.remove(caminho)
         
         return {"status": "Sucesso", "id": novo_diario.id}
@@ -124,19 +118,17 @@ class GovTechAPI:
     @cherrypy.tools.json_out()
     def oportunidades(self):
         session = db_session()
-        # Traz as 50 últimas
         ops = session.query(Oportunidade).limit(50).all()
-        # Converte para dict para retornar JSON
         return [{"id": o.id, "objeto": o.objeto_resumido, "valor": o.valor, "vencedor": o.favorecido} for o in ops]
 
 if __name__ == '__main__':
     init_db()
-    # Configuração correta para Docker/Coolify
+    # MANTENHA A PORTA 8080 PARA O COOLIFY (Padrão)
     conf = {
         'global': {
             'server.socket_host': '0.0.0.0',
-            'server.socket_port': 9090,
-            'server.max_request_body_size': 100 * 1024 * 1024 # 100MB
+            'server.socket_port': 9090, 
+            'server.max_request_body_size': 100 * 1024 * 1024
         }
     }
     cherrypy.quickstart(GovTechAPI(), '/', conf)
