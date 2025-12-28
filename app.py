@@ -6,23 +6,25 @@ from datetime import datetime
 from database import init_db, db_session, Diario, Oportunidade
 from openai import OpenAI
 
+# --- IMPORTANTE: SUA CHAVE AQUI ---
 api_key = os.getenv("OPENAI_API_KEY")
 client = OpenAI(api_key=api_key)
 
 class GovTechAPI:
     @cherrypy.expose
     def index(self):
-        return "API GovTech (Estrutura Completa v5)."
+        return "API GovTech Gold (Porta 9090)."
 
     @cherrypy.expose
     @cherrypy.tools.json_out()
     def upload(self, arquivo_pdf, codigo, edicao, hash_origem, data_pub):
-        print(f"\n=== PROCESSANDO EDIÇÃO {edicao} (COMPLETO) ===")
+        print(f"\n=== [DETETIVE] PROCESSANDO EDIÇÃO {edicao} ===")
         session = db_session()
         
         # 1. Verifica duplicidade
         if session.query(Diario).filter_by(codigo_origem=codigo).first():
             session.close()
+            print("--- [DETETIVE] Ignorado: Já existe.")
             return {"status": "Ignorado", "msg": "Já existe."}
 
         # 2. Salva arquivo
@@ -34,7 +36,7 @@ class GovTechAPI:
                 if not data: break
                 out.write(data)
 
-        # 3. Cria registro do DIÁRIO (Arquivo)
+        # 3. Cria Diário no Banco
         novo_diario = Diario(
             municipio="Lençóis Paulista",
             data_publicacao=datetime.strptime(data_pub, "%Y-%m-%d").date(),
@@ -42,45 +44,46 @@ class GovTechAPI:
             codigo_origem=int(codigo),
             numero_edicao=int(edicao),
             hash_origem=hash_origem,
-            tipo_documento_geral="Diário Oficial",
             processado=True
         )
         session.add(novo_diario)
         session.commit()
         id_pai = novo_diario.id 
 
-        # 4. Extrai Texto
+        # 4. Extrai Texto (Com filtro amplo)
         texto = ""
         try:
             with pdfplumber.open(caminho) as pdf:
                 for page in pdf.pages:
                     t = page.extract_text() or ""
-                    # Filtro inteligente: Pega páginas com indícios de compras
-                    if any(x in t.upper() for x in ["DISPENSA", "LICITAÇÃO", "CONTRATO", "ADITIVO", "RATIFICAÇÃO", "HOMOLOGAÇÃO"]):
+                    # Filtro que pega tanto Compras (Passado) quanto Licitações (Futuro)
+                    if any(x in t.upper() for x in ["DISPENSA", "LICITAÇÃO", "PREGÃO", "CONTRATO", "ADITIVO", "RATIFICAÇÃO", "AVISO"]):
                         texto += t + "\n"
+            
+            print(f"--- [DETETIVE] Caracteres extraídos: {len(texto)}")
         except Exception as e:
-            print(f"Erro PDF: {e}")
+            print(f"Erro ao ler PDF: {e}")
 
-        # 5. Chama a IA com PROMPT RICO
+        # 5. Inteligência Artificial (Prompt Híbrido: Futuro e Passado)
         if len(texto) > 50:
             prompt = f"""
             Analise o texto deste Diário Oficial.
-            Identifique cada Compra, Licitação, Dispensa, Contrato ou Aditivo.
+            Busque dois tipos de dados:
+            1. RESULTADOS (Quem ganhou): Homologações, Extratos, Dispensas Ratificadas.
+            2. AVISOS (Futuro): Avisos de Licitação, Pregões Agendados, Chamamentos.
             
-            Retorne APENAS um JSON array. Use EXATAMENTE estas chaves:
-            - "id_processo": (Ex: "Dispensa 014/2025")
-            - "categoria": (Ex: "Limpeza", "Obras", "TI", "Imobiliário")
-            - "objeto": (Descrição completa do que foi comprado)
-            - "valor": (Número float, valor total. Se for mensal, multiplique pelo prazo ou estime. Ex: 553677.78)
-            - "vencedor": (Razão Social da empresa)
-            - "cnpj": (O CNPJ do vencedor, se houver no texto)
-            - "prazo": (Vigência do contrato)
-            - "status": ("Contratado", "Aberto", "Cancelado", "Ratificado")
-            - "localizacao": (Endereço, se for aluguel ou obra. Senão null)
-            - "insight": (Uma frase curta estratégica para um vendedor sobre isso)
+            Retorne APENAS um JSON array com estas chaves:
+            - "id_processo": (Ex: "Pregão 90/2025")
+            - "categoria": (Ex: "Limpeza", "Obras", "TI")
+            - "objeto": (Resumo do que está sendo comprado)
+            - "valor": (Valor estimado ou contratado. 0 se não tiver)
+            - "vencedor": (Se for Resultado, nome da empresa. Se for Aviso, "Em Aberto")
+            - "cnpj": (CNPJ se houver)
+            - "data_sessao": (Se for Aviso/Futuro, a data/hora da disputa. Ex: "25/01/2026". Se for resultado, null)
+            - "status": ("Aberto" se for futuro, "Contratado" se já acabou)
+            - "insight": (Dica curta para vendedor)
 
-            Texto para análise:
-            {texto[:15000]}
+            Texto: {texto[:15000]}
             """
             
             try:
@@ -91,76 +94,79 @@ class GovTechAPI:
                 )
                 
                 conteudo = resp.choices[0].message.content.strip()
-                # Limpeza de Markdown
                 if "```" in conteudo: 
                     conteudo = conteudo.replace("```json", "").replace("```", "")
                 
                 dados_ia = json.loads(conteudo)
+                print(f"--- [DETETIVE] IA encontrou {len(dados_ia)} itens.")
                 
                 contador = 0
                 for item in dados_ia:
                     try:
-                        # Tratamento de segurança para o valor float
-                        val_raw = item.get('valor', 0)
-                        if isinstance(val_raw, str): 
-                            val_float = 0.0 # Se vier texto sujo, zera pra não quebrar
-                        else:
-                            val_float = float(val_raw)
-
+                        val = float(item.get('valor', 0) if isinstance(item.get('valor'), (int, float, str)) else 0)
+                        
                         op = Oportunidade(
                             diario_id=id_pai,
                             id_processo=str(item.get('id_processo', 'N/A')),
                             categoria=str(item.get('categoria', 'Geral')),
                             objeto=str(item.get('objeto', 'N/A')),
-                            valor=val_float,
-                            vencedor=str(item.get('vencedor', 'N/A')),
-                            cnpj_vencedor=str(item.get('cnpj', '')), # Novo campo
+                            valor=val,
+                            vencedor=str(item.get('vencedor', 'Em Aberto')),
+                            cnpj_vencedor=str(item.get('cnpj', '')),
+                            data_sessao=str(item.get('data_sessao', '')), # CAMPO NOVO
                             prazo=str(item.get('prazo', '')),
                             status=str(item.get('status', 'Detectado')),
-                            localizacao=str(item.get('localizacao', '')),
                             insight_venda=str(item.get('insight', ''))
                         )
                         session.add(op)
                         contador += 1
-                    except Exception as e_item:
-                        print(f"Erro ao salvar item: {e_item}")
+                    except Exception as ex:
+                        print(f"Erro ao salvar item: {ex}")
 
                 session.commit()
-                print(f"--- SUCESSO: {contador} oportunidades completas salvas! ---")
+                print(f"--- [SUCESSO] {contador} oportunidades salvas! ---")
 
             except Exception as e:
                 print(f"ERRO OPENAI: {e}")
 
         session.close()
         if os.path.exists(caminho): os.remove(caminho)
-        
         return {"status": "Sucesso", "id": id_pai}
 
     @cherrypy.expose
     @cherrypy.tools.json_out()
     def oportunidades(self):
         session = db_session()
-        # Retorna o JSON completo para seu Frontend
         ops = session.query(Oportunidade).join(Diario).order_by(Diario.data_publicacao.desc()).limit(50).all()
+        
         lista = []
         for o in ops:
+            # GERA LINK ORIGINAL
+            link_original = f"[https://lencois.mentor.metaway.com.br/recurso/diario/editar/](https://lencois.mentor.metaway.com.br/recurso/diario/editar/){o.diario.codigo_origem}"
+
             lista.append({
                 "id": o.id,
-                "data": str(o.diario.data_publicacao),
+                "municipio": o.diario.municipio,
+                "data_publicacao": str(o.diario.data_publicacao),
+                "link_documento": link_original, # LINK DA PROVA
                 "edicao": o.diario.numero_edicao,
                 "processo": o.id_processo,
                 "categoria": o.categoria,
                 "objeto": o.objeto,
                 "valor": o.valor,
+                "status": o.status,
                 "vencedor": o.vencedor,
                 "cnpj": o.cnpj_vencedor,
-                "status": o.status,
+                "data_sessao": o.data_sessao,   # DATA VITAL PARA VENDAS
                 "insight": o.insight_venda
             })
+            
         session.close()
         return lista
 
 if __name__ == '__main__':
     init_db()
-    conf = {'global': {'server.socket_host': '0.0.0.0', 'server.socket_port': 9090}}
+    # RODANDO NA PORTA 9090
+    conf = {'global': {'server.socket_host': '0.0.0.0', 'server.socket_port': 9090, 'server.max_request_body_size': 100*1024*1024}}
+    print("--- API GOVTECH INICIADA NA PORTA 9090 ---")
     cherrypy.quickstart(GovTechAPI(), '/', conf)
