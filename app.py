@@ -66,33 +66,35 @@ class GovTechAPI:
 
         # 5. Inteligência Artificial (COM LÓGICA TEMPORAL CORRIGIDA)
         if len(texto) > 50:
-            # Pega data de hoje
             hoje_str = datetime.now().strftime("%d/%m/%Y")
             
             prompt = f"""
             Analise o texto do Diário Oficial.
             CONTEXTO: Hoje é dia {hoje_str}.
             
-            REGRAS DE NEGÓCIO VITAIS:
-            1. SEPARAÇÃO: Identifique se o texto é um "AVISO" (convite futuro) ou "RESULTADO" (decisão passada).
-            2. STATUS:
-               - Se for AVISO e a data da sessão for FUTURA -> Status: "Aberto".
-               - Se for AVISO e a data da sessão JÁ PASSOU -> Status: "Encerrado" (Prazo expirou).
-               - Se for RESULTADO/HOMOLOGAÇÃO -> Status: "Contratado".
-            3. VENCEDOR:
-               - Se for RESULTADO, extraia o nome da empresa.
-               - Se for AVISO (Aberto ou Encerrado), o vencedor DEVE SER "Aguardando Julgamento" (pois não consta neste texto).
-
+            OBJETIVO: Extrair oportunidades comerciais reais para fornecedores.
+            
+            REGRAS DE OURO (Siga estritamente):
+            1. IGNORAR REPASSES: Se for "Termo de Fomento", "Subvenção", "Repasse" ou "Convênio" com ONG/Associação, defina Categoria="Repasse" e Status="Informativo".
+            2. ADITIVOS NÃO SÃO VENDAS: Se for "Termo Aditivo", "Prorrogação de Contrato" ou "Supressão", o Status DEVE ser "Renovação" (nunca "Aberto"). O vencedor é a empresa citada.
+            3. AVISOS DE LICITAÇÃO:
+               - Se a data da sessão for FUTURA -> Status="Aberto".
+               - Se a data JÁ PASSOU -> Status="Encerrado".
+               - Vencedor -> "Em Aberto".
+            4. RESULTADOS/CONTRATOS:
+               - Se tiver CNPJ e Valor definidos -> Status="Contratado".
+            5. VALOR: Esforce-se para encontrar o valor total (Global) ou estimado. Se for Registro de Preços, procure o valor total da ata.
+            
             Retorne JSON array:
-            - "id_processo": (Ex: "Pregão 90/2025")
-            - "categoria": (Ex: "Limpeza", "Obras")
-            - "objeto": (Resumo)
-            - "valor": (Float total ou 0)
-            - "vencedor": (Nome da empresa ou "Aguardando Julgamento")
+            - "id_processo": (Ex: "Pregão 90/2025", "Aditivo 01/24")
+            - "categoria": (Ex: "Limpeza", "Obras", "TI", "Repasse")
+            - "objeto": (Resumo claro do que é)
+            - "valor": (Float. Se não achar, 0)
+            - "vencedor": (Nome da empresa. Se for Aviso, "Em Aberto")
             - "cnpj": (CNPJ ou null)
-            - "data_sessao": (Data da disputa. Ex: "04/09/2025 09h")
-            - "status": ("Aberto", "Encerrado", "Contratado")
-            - "insight": (Dica curta. Se Encerrado, avise: "Licitação já ocorreu, busque a ata.")
+            - "data_sessao": (Data da disputa DD/MM/AAAA HH:MM. Se for contrato, null)
+            - "status": ("Aberto", "Encerrado", "Contratado", "Renovação", "Informativo")
+            - "insight": (Dica curta. Ex: "Renovação de contrato por 12 meses" ou "Oportunidade nova! Prepare documentação")
 
             Texto: {texto[:15000]}
             """
