@@ -3,7 +3,8 @@ import os
 import pdfplumber
 import json
 from datetime import datetime
-from database import init_db, db_session, Diario, Oportunidade
+from database import init_db, db_session
+from models import Diario, Oportunidade
 
 # --- MUDANÇA 1: Nova forma de importar a OpenAI ---
 from openai import OpenAI
