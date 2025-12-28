@@ -11,7 +11,7 @@ URL_DETALHE = "https://lencois.mentor.metaway.com.br/recurso/diario/editar/"
 # Seu servidor local
 API_LOCAL = "http://localhost:8080/upload"
 
-def capturar_diarios(dias_atras=7):
+def capturar_diarios(dias_atras=90):
     # Define intervalo de busca
     data_final = datetime.now()
     data_inicial = data_final - timedelta(days=dias_atras)
