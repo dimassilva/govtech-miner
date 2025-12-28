@@ -9,8 +9,6 @@ from openai import OpenAI
 api_key = os.getenv("OPENAI_API_KEY")
 client = OpenAI(api_key=api_key)
 
-client = OpenAI(api_key=MINHA_CHAVE_OPENAI)
-
 class GovTechAPI:
     @cherrypy.expose
     def index(self):
