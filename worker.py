@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 urllib3.disable_warnings()
 
 # No Coolify, a URL vem da configuração. Se não tiver, usa localhost.
-API_URL = os.getenv("API_URL", "http://localhost:9090/upload")
+API_URL = os.getenv("API_URL", "http://a0okwgosoc4oookw8s40cwco.104.168.4.3.sslip.io/upload")
 
 def buscar_diarios():
     print(f"--- INICIANDO BUSCA DE DIÁRIOS (Enviando para {API_URL}) ---")
