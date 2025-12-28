@@ -9,7 +9,7 @@ URL_LISTA = "https://lencois.mentor.metaway.com.br/recurso/diario/lista"
 URL_DETALHE = "https://lencois.mentor.metaway.com.br/recurso/diario/editar/"
 
 # Seu servidor local
-API_LOCAL = "http://localhost:8080/upload"
+API_LOCAL = "http://localhost:9090/upload"
 
 def capturar_diarios(dias_atras=90):
     # Define intervalo de busca
