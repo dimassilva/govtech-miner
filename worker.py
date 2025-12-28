@@ -63,15 +63,15 @@ def job_captura():
                             resp_api = r.json()
                             if resp_api.get('status') == 'Ignorado':
                                 print(f"   [PULOU] Já estava no banco.")
-                                # Se já existe, espera pouco (1 seg)
-                                time.sleep(1)
+                                # Se já existe, espera pouco (3 seg)
+                                time.sleep(3)
                             else:
                                 print(f"   [SUCESSO] Processado! ID: {resp_api.get('id')}")
                                 # --- O FREIO VITAL ---
-                                # Se processou com IA, espera 15 segundos para:
+                                # Se processou com IA, espera 120 segundos para:
                                 # 1. Não estourar a memória do servidor
                                 # 2. Não levar bloqueio da OpenAI (Rate Limit)
-                                print("   ... Resfriando motor (15s) ...")
+                                print("   ... Resfriando motor (120s) ...")
                                 time.sleep(120) 
                         else:
                             print(f"   [ERRO API] Código {r.status_code}")
