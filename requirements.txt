@@ -1,7 +1,8 @@
 cherrypy
 sqlalchemy
+pymysql
 pdfplumber
 openai
-python-dotenv
-pymysql
+requests
 cryptography
+schedule
