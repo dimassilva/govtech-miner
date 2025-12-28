@@ -64,34 +64,35 @@ class GovTechAPI:
         except Exception as e:
             print(f"Erro ao ler PDF: {e}")
 
-        # 5. Inteligência Artificial (COM DATA DE HOJE)
+        # 5. Inteligência Artificial (COM LÓGICA TEMPORAL CORRIGIDA)
         if len(texto) > 50:
-            # Pegamos a data de hoje para a IA ter referência
+            # Pega data de hoje
             hoje_str = datetime.now().strftime("%d/%m/%Y")
             
             prompt = f"""
-            Analise o texto deste Diário Oficial.
-            CONTEXTO ATUAL: Hoje é dia {hoje_str}.
+            Analise o texto do Diário Oficial.
+            CONTEXTO: Hoje é dia {hoje_str}.
             
-            Busque dois tipos de dados:
-            1. RESULTADOS (Passado): Homologações, Extratos, Ratificações.
-            2. AVISOS (Futuro): Licitações marcadas.
-            
-            REGRAS DE STATUS:
-            - Se encontrar uma data de sessão ANTERIOR a {hoje_str}, o status DEVE ser "Encerrado" (mesmo que o texto diga 'Aviso de Licitação').
-            - Se a data for POSTERIOR a {hoje_str}, o status é "Aberto".
-            - Se for um resultado de julgamento/contrato, o status é "Contratado".
-            
+            REGRAS DE NEGÓCIO VITAIS:
+            1. SEPARAÇÃO: Identifique se o texto é um "AVISO" (convite futuro) ou "RESULTADO" (decisão passada).
+            2. STATUS:
+               - Se for AVISO e a data da sessão for FUTURA -> Status: "Aberto".
+               - Se for AVISO e a data da sessão JÁ PASSOU -> Status: "Encerrado" (Prazo expirou).
+               - Se for RESULTADO/HOMOLOGAÇÃO -> Status: "Contratado".
+            3. VENCEDOR:
+               - Se for RESULTADO, extraia o nome da empresa.
+               - Se for AVISO (Aberto ou Encerrado), o vencedor DEVE SER "Aguardando Julgamento" (pois não consta neste texto).
+
             Retorne JSON array:
             - "id_processo": (Ex: "Pregão 90/2025")
             - "categoria": (Ex: "Limpeza", "Obras")
             - "objeto": (Resumo)
-            - "valor": (Float ou 0)
-            - "vencedor": (Nome ou "Em Aberto")
+            - "valor": (Float total ou 0)
+            - "vencedor": (Nome da empresa ou "Aguardando Julgamento")
             - "cnpj": (CNPJ ou null)
-            - "data_sessao": (Ex: "04/09/2025 09h" ou null)
-            - "status": ("Aberto", "Encerrado" ou "Contratado")
-            - "insight": (Dica para o vendedor)
+            - "data_sessao": (Data da disputa. Ex: "04/09/2025 09h")
+            - "status": ("Aberto", "Encerrado", "Contratado")
+            - "insight": (Dica curta. Se Encerrado, avise: "Licitação já ocorreu, busque a ata.")
 
             Texto: {texto[:15000]}
             """
