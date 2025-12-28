@@ -8,7 +8,7 @@ from models import Diario, Oportunidade
 from openai import OpenAI
 
 # --- PASSO 1: COLE SUA NOVA CHAVE AQUI DENTRO DAS ASPAS ---
-MINHA_CHAVE_OPENAI = "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" 
+MINHA_CHAVE_OPENAI = "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" 
 
 # Inicializa cliente
 client = OpenAI(api_key=MINHA_CHAVE_OPENAI)
