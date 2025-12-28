@@ -123,7 +123,7 @@ if __name__ == '__main__':
     conf = {
         'global': {
             'server.socket_host': '0.0.0.0',
-            'server.socket_port': 8080,
+            'server.socket_port': 9090,
             'server.max_request_body_size': 100 * 1024 * 1024 # 100MB
         }
     }
