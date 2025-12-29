@@ -3,12 +3,14 @@ import os
 import pdfplumber
 import json
 import re
+import time # <--- IMPORTANTE PARA ESPERAR
 from datetime import datetime
 from database import init_db, db_session, Diario, Oportunidade, Usuario, Alerta, Favorito
 
 # --- IMPORT DA NOVA BIBLIOTECA DO GOOGLE ---
 from google import genai
 from google.genai import types
+from google.api_core import exceptions # Para pegar o erro exato
 
 # --- CONFIGURAÇÃO GEMINI ---
 api_key = os.getenv("GEMINI_API_KEY")
@@ -164,7 +166,7 @@ class FavoritoController:
             session.close()
 
 # ==========================================
-# 3. API PRINCIPAL (GEMINI NOVO)
+# 3. API PRINCIPAL (COM RETRY AUTOMÁTICO)
 # ==========================================
 class GovTechAPI:
     usuarios = UsuarioController()
@@ -173,7 +175,7 @@ class GovTechAPI:
 
     @cherrypy.expose
     def index(self):
-        return "GovTech API v9.3 (Gemini SDK Fixed)"
+        return "GovTech API v9.5 (Auto-Retry Enabled)"
 
     @cherrypy.expose
     @cherrypy.tools.json_out()
@@ -214,7 +216,7 @@ class GovTechAPI:
         except Exception as e:
             print(f"Erro PDF: {e}")
 
-        # 5. IA (PROMPT COM SDK NOVO)
+        # 5. IA (COM LOOP DE RETENTATIVA)
         if len(texto) > 100:
             hoje_str = datetime.now().strftime("%d/%m/%Y")
             
@@ -258,46 +260,61 @@ class GovTechAPI:
             {texto[:30000]}
             """
 
-            try:
-                # --- CHAMADA CORRETA DO SDK NOVO ---
-                response = client.models.generate_content(
-                    model='gemini-2.0-flash-001',
-                    contents=prompt,
-                    config=types.GenerateContentConfig(
-                        response_mime_type='application/json',
-                        temperature=0.1
-                    )
-                )
-                
-                raw_json = response.text
-                dados_ia = json.loads(raw_json)
-
-                for item in dados_ia:
-                    valor_float = limpar_valor(item.get('valor', 0))
-                    data_sessao_str = item.get('data_sessao', '')
-                    status_final = verificar_status_real(item.get('status', 'Aberto'), data_sessao_str)
+            # --- LÓGICA DE RETRY (Blindagem contra erro 429) ---
+            max_tentativas = 3
+            for tentativa in range(max_tentativas):
+                try:
+                    print(f"   > Enviando para IA (Tentativa {tentativa+1}/{max_tentativas})...")
                     
-                    insight_final = item.get('insight', '')
-                    if status_final == 'Encerrado' and item.get('status') == 'Aberto':
-                        insight_final = "Prazo expirado. Aguarde resultado."
-
-                    op = Oportunidade(
-                        diario_id=id_pai,
-                        id_processo=item.get('id_processo', 'N/A'),
-                        categoria=item.get('categoria', 'Geral'),
-                        objeto=item.get('objeto', 'N/A')[:500],
-                        valor=valor_float,
-                        vencedor=item.get('vencedor', 'Em Aberto'),
-                        cnpj_vencedor=item.get('cnpj', ''),
-                        data_sessao=data_sessao_str,
-                        status=status_final,
-                        insight_venda=insight_final
+                    response = client.models.generate_content(
+                        model='gemini-2.0-flash-001', 
+                        contents=prompt,
+                        config=types.GenerateContentConfig(
+                            response_mime_type='application/json',
+                            temperature=0.1
+                        )
                     )
-                    session.add(op)
-                session.commit()
+                    
+                    raw_json = response.text
+                    dados_ia = json.loads(raw_json)
 
-            except Exception as e:
-                print(f"Erro Gemini SDK: {e}")
+                    # Se chegou aqui, deu certo! Processa e sai do loop
+                    for item in dados_ia:
+                        valor_float = limpar_valor(item.get('valor', 0))
+                        data_sessao_str = item.get('data_sessao', '')
+                        status_final = verificar_status_real(item.get('status', 'Aberto'), data_sessao_str)
+                        
+                        insight_final = item.get('insight', '')
+                        if status_final == 'Encerrado' and item.get('status') == 'Aberto':
+                            insight_final = "Prazo expirado. Aguarde resultado."
+
+                        op = Oportunidade(
+                            diario_id=id_pai,
+                            id_processo=item.get('id_processo', 'N/A'),
+                            categoria=item.get('categoria', 'Geral'),
+                            objeto=item.get('objeto', 'N/A')[:500],
+                            valor=valor_float,
+                            vencedor=item.get('vencedor', 'Em Aberto'),
+                            cnpj_vencedor=item.get('cnpj', ''),
+                            data_sessao=data_sessao_str,
+                            status=status_final,
+                            insight_venda=insight_final
+                        )
+                        session.add(op)
+                    
+                    session.commit()
+                    print("   > Sucesso na IA!")
+                    break # Sai do loop de tentativas
+
+                except Exception as e:
+                    erro_msg = str(e)
+                    # Verifica se é erro de cota (429)
+                    if "429" in erro_msg or "RESOURCE_EXHAUSTED" in erro_msg:
+                        print(f"   >>> COTA EXCEDIDA (429). Esperando 30 segundos...")
+                        time.sleep(30) # Espera 30s e tenta de novo
+                    else:
+                        print(f"   >>> Erro fatal na IA: {e}")
+                        break # Se for outro erro, não adianta tentar de novo
 
         session.close()
         if os.path.exists(caminho): os.remove(caminho)
@@ -357,5 +374,5 @@ if __name__ == '__main__':
         '/keywords': { 'tools.cors.on': True },
         '/favoritos': { 'tools.cors.on': True }
     }
-    print("\n--- GOVTECH BACKEND (GEMINI 1.5 - SDK NOVO) RODANDO ---")
+    print("\n--- GOVTECH BACKEND (COM AUTO-RETRY 429) RODANDO ---")
     cherrypy.quickstart(GovTechAPI(), '/', conf)
