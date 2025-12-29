@@ -16,7 +16,7 @@ def job_captura():
     
     # Busca um período maior para garantir que pegue os 260
     data_final = datetime.now()
-    data_inicial = data_final - timedelta(days=363) # Pega últimos 363 dias se precisar
+    data_inicial = data_final - timedelta(days=90) # Pega últimos 363 dias se precisar
     
     params = {
         "dataInicial": data_inicial.strftime("%Y-%m-%dT00:00:00"),
