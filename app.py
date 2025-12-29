@@ -249,6 +249,29 @@ class GovTechAPI:
         
         session.close()
         return lista
+    
+    # ==========================================
+    # 4. LISTA CATEGORIAS DISPONÍVEIS
+    # ==========================================
+    @cherrypy.expose
+    @cherrypy.tools.json_out()
+    def listaCategorias(self):
+        session = db_session()
+        try:
+            # REMOVI O FILTER: Agora pega categorias de 'Aberto', 'Contratado', 'Fracassada', etc.
+            categorias = session.query(Oportunidade.categoria)\
+                .distinct()\
+                .order_by(Oportunidade.categoria)\
+                .all()
+            
+            lista_categorias = [c[0] for c in categorias if c[0]]
+            return lista_categorias
+            
+        except Exception as e:
+            print(f"Erro ao buscar categorias: {e}")
+            return []
+        finally:
+            session.close()
 
 if __name__ == '__main__':
     init_db()
