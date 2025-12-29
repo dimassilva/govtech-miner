@@ -2,7 +2,7 @@ cherrypy
 sqlalchemy
 pymysql
 pdfplumber
-google-generativeai
+google-genai
 requests
 cryptography
 schedule
