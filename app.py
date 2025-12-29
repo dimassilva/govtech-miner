@@ -273,6 +273,31 @@ class GovTechAPI:
         finally:
             session.close()
 
+    # ==========================================
+    # 5. LISTA STATUS DISPONÍVEIS
+    # ==========================================
+    @cherrypy.expose
+    @cherrypy.tools.json_out()
+    def listaStatus(self):
+        session = db_session()
+        try:
+            # Busca status únicos presentes no banco, ordenados alfabeticamente
+            status_banco = session.query(Oportunidade.status)\
+                .distinct()\
+                .order_by(Oportunidade.status)\
+                .all()
+            
+            # Transforma [('Aberto',), ('Contratado',)] em ['Aberto', 'Contratado']
+            lista_status = [s[0] for s in status_banco if s[0]]
+            
+            return lista_status
+            
+        except Exception as e:
+            print(f"Erro ao buscar status: {e}")
+            return []
+        finally:
+            session.close()
+
 if __name__ == '__main__':
     init_db()
     conf = {
