@@ -263,7 +263,7 @@ class GovTechAPI:
                 "objeto": "Resumo do que está sendo comprado",
                 "valor": "1200.00" (Número ou 0),
                 "vencedor": "Nome da Empresa ou 'Em Aberto'",
-                "cnpj": "XX.XXX.XXX/0001-XX (Número ou VAZIO)",
+                "cnpj": "XX.XXX.XXX/0001-XX (ou VAZIO)",
                 "data_sessao": "DD/MM/AAAA", 
                 "status": "Aberto",
                 "insight": "Frase estratégica"
