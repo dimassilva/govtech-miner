@@ -177,8 +177,8 @@ job_lencois()
 # job_bauru() # Descomente quando configurar a URL real de Bauru
 
 # Agenda para rodar a cada 6 horas
-schedule.every(6).hours.do(job_lencois)
-schedule.every(6).hours.do(job_bauru)
+#schedule.every(6).hours.do(job_lencois)
+#schedule.every(6).hours.do(job_bauru)
 
 print("--- WORKER HÍBRIDO RODANDO (AGUARDANDO AGENDAMENTO) ---")
 
