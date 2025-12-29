@@ -38,6 +38,7 @@ class LencoisProcessor(BaseProcessor):
             2. CONTABILIDADE INTERNA: Ignore tabelas de "Suplementação", "Dotação Orçamentária", "Crédito Suplementar", "Decreto de Abertura de Crédito", "Anulação de Verbas". (Dica: Se o texto fala apenas de remanejamento de verba entre secretarias, NÃO é venda).
             3. ASSISTENCIALISMO/POLÍTICA: Ignore "Chamamento Público para Artesãos", "Feirantes", "Subvenção Social", "Repasse ao Terceiro Setor", "Conselhos Municipais".
             4. LEGISLATIVO: Ignore "Indicações de Vereadores", "Moções", "Leis" (exceto se for lei autorizando compra específica).
+            5. Ignore 'Abre Crédito Especial', 'Crédito Adicional', 'Crédito Suplementar' e qualquer Decreto que trate apenas de orçamento.
 
             === O QUE CAPTURAR (OURO - VENDAS B2G) ===
             Capture qualquer transação onde a prefeitura compra produtos ou contrata empresas:
@@ -62,8 +63,10 @@ class LencoisProcessor(BaseProcessor):
                 "objeto": "Descrição resumida do que está sendo comprado (máx 200 chars)",
                 "valor": 1200.50,  (IMPORTANTE: Retorne FLOAT. Converta '1.200,50' para 1200.50. Se não houver valor exato, use 0.0),
                 "vencedor": "Nome da Empresa ou 'Em Aberto' se for Aviso",
-                "cnpj": "XX.XXX.XXX/0001-XX",
-                "data_sessao": "DD/MM/AAAA", 
+                "cnpj": "XX.XXX.XXX/0001-XX" (ou vazio se não houver),
+                "data_sessao": "DD/MM/AAAA",
+                "prazo": "12 meses" (ou "60 dias", "Imediato"),
+                "localizacao": "Local de entrega ou execução (ex: Almoxarifado Central)",
                 "status": "Aberto",
                 "insight": "Frase destacando a oportunidade (ex: 'Compra direta de TI sem licitação')"
             }}

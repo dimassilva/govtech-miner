@@ -83,6 +83,8 @@ class BaseProcessor:
                     cnpj_vencedor=item.get('cnpj', ''),
                     data_sessao=data_sessao_str,
                     status=status_final,
+                    prazo=item.get('prazo', ''),
+                    localizacao=item.get('localizacao', ''),
                     insight_venda=insight_final
                 )
                 session.add(op)
