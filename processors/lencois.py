@@ -42,6 +42,8 @@ class LencoisProcessor(BaseProcessor):
                 - Ignore 'Abre Crédito Especial', 'Crédito Adicional', 'Crédito Suplementar' e qualquer Decreto que trate apenas de orçamento.
                 - IGNORE ABSOLUTAMENTE qualquer ato que contenha: "Abertura de Crédito Especial", "Abre Crédito Suplementar", "Crédito Adicional", "Suplementação de Verbas", "Remanejamento", "Dotação Orçamentária", "Anulação de Dotações".
                 - Se o texto diz "Fica aberto crédito especial... para ocorrer despesas...", isso é apenas movimentação bancária interna, NÃO É COMPRA. Ignore.
+                - IGNORE "Designação de Fiscal de Contrato", "Nomeação de Gestor de Contrato", "Atribuições de Gestor".
+                - DICA: Se o texto diz "Nomeia servidores para fiscalizar contrato/ata", IGNORE. Isso é ato administrativo interno.
 
             === O QUE CAPTURAR (OURO - VENDAS B2G) ===
             Capture qualquer transação onde a prefeitura compra produtos ou contrata empresas:
