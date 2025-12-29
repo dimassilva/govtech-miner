@@ -5,11 +5,12 @@ import json
 import re
 from datetime import datetime
 from database import init_db, db_session, Diario, Oportunidade, Usuario, Alerta, Favorito
+
+# --- IMPORT DA NOVA BIBLIOTECA DO GOOGLE ---
 from google import genai
 from google.genai import types
 
 # --- CONFIGURAÇÃO GEMINI ---
-# A nova biblioteca instancia um Cliente direto
 api_key = os.getenv("GEMINI_API_KEY")
 client = genai.Client(api_key=api_key)
 
@@ -163,7 +164,7 @@ class FavoritoController:
             session.close()
 
 # ==========================================
-# 3. API PRINCIPAL (Processamento GEMINI NOVO)
+# 3. API PRINCIPAL (GEMINI NOVO)
 # ==========================================
 class GovTechAPI:
     usuarios = UsuarioController()
@@ -172,7 +173,7 @@ class GovTechAPI:
 
     @cherrypy.expose
     def index(self):
-        return "GovTech API v9.2 (New Google GenAI SDK)"
+        return "GovTech API v9.3 (Gemini SDK Fixed)"
 
     @cherrypy.expose
     @cherrypy.tools.json_out()
@@ -258,7 +259,7 @@ class GovTechAPI:
             """
 
             try:
-                # --- CHAMADA ATUALIZADA ---
+                # --- CHAMADA CORRETA DO SDK NOVO ---
                 response = client.models.generate_content(
                     model='gemini-1.5-flash',
                     contents=prompt,
