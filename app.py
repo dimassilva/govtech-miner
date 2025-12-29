@@ -5,33 +5,18 @@ import json
 import re
 from datetime import datetime
 from database import init_db, db_session, Diario, Oportunidade, Usuario, Alerta, Favorito
-import google.generativeai as genai
-from google.ai.generativelanguage_v1beta.types import content
+from google import genai
+from google.genai import types
 
 # --- CONFIGURAÇÃO GEMINI ---
-# Certifique-se de ter a variável de ambiente GEMINI_API_KEY definida
+# A nova biblioteca instancia um Cliente direto
 api_key = os.getenv("GEMINI_API_KEY")
-genai.configure(api_key=api_key)
-
-# Configuração do modelo (Usando o Flash por ser rápido e eficiente para volumes de texto)
-generation_config = {
-  "temperature": 0.1,
-  "top_p": 0.95,
-  "top_k": 64,
-  "max_output_tokens": 8192,
-  "response_mime_type": "application/json", # FORÇA O RETORNO EM JSON PURO
-}
-
-model = genai.GenerativeModel(
-  model_name="gemini-1.5-flash",
-  generation_config=generation_config,
-)
+client = genai.Client(api_key=api_key)
 
 # ==========================================
 # FERRAMENTA DE CORS (BLINDADA)
 # ==========================================
 def cors():
-    # Permite acesso de qualquer origem (Frontend Vite/React)
     cherrypy.response.headers['Access-Control-Allow-Origin'] = '*'
     cherrypy.response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS'
     cherrypy.response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-Requested-With'
@@ -46,34 +31,25 @@ cherrypy.tools.cors = cherrypy.Tool('before_handler', cors)
 # FUNÇÕES AUXILIARES
 # ==========================================
 def limpar_valor(valor_str):
-    """Converte strings como 'R$ 1.200,50' ou '1.200,50' para float 1200.50"""
     if isinstance(valor_str, (int, float)):
         return float(valor_str)
     try:
-        # Remove R$, espaços e pontos de milhar
         limpo = str(valor_str).replace('R$', '').replace(' ', '').replace('.', '')
-        # Troca vírgula decimal por ponto
         limpo = limpo.replace(',', '.')
         return float(limpo)
     except:
         return 0.0
 
 def verificar_status_real(status_ia, data_sessao_str):
-    """O Python é o juiz final do tempo. A IA pode errar, o relógio não."""
     if not data_sessao_str:
         return status_ia
-    
     try:
-        # Tenta converter DD/MM/YYYY
         dt_sessao = datetime.strptime(data_sessao_str, "%d/%m/%Y")
         hoje = datetime.now()
-
-        # Se a data já passou e o status ainda é 'Aberto', encerra.
         if dt_sessao < hoje and status_ia == 'Aberto':
             return 'Encerrado'
         return status_ia
     except:
-        # Se a data vier bugada, confia no status da IA ou define como Informativo
         return status_ia
 
 # ==========================================
@@ -187,7 +163,7 @@ class FavoritoController:
             session.close()
 
 # ==========================================
-# 3. API PRINCIPAL (Processamento GEMINI)
+# 3. API PRINCIPAL (Processamento GEMINI NOVO)
 # ==========================================
 class GovTechAPI:
     usuarios = UsuarioController()
@@ -196,7 +172,7 @@ class GovTechAPI:
 
     @cherrypy.expose
     def index(self):
-        return "GovTech API v9.1 (Gemini 1.5 Flash Integrated)"
+        return "GovTech API v9.2 (New Google GenAI SDK)"
 
     @cherrypy.expose
     @cherrypy.tools.json_out()
@@ -204,12 +180,10 @@ class GovTechAPI:
         print(f"\n>>> PROCESSANDO EDICAO {edicao} ({data_pub})")
         session = db_session()
 
-        # 1. Verifica duplicidade
         if session.query(Diario).filter_by(codigo_origem=codigo).first():
             session.close()
             return {"status": "Ignorado", "msg": "Edição já processada."}
 
-        # 2. Salva PDF temporário
         if not os.path.exists('uploads'): os.makedirs('uploads')
         caminho = os.path.join('uploads', arquivo_pdf.filename)
         with open(caminho, 'wb') as out:
@@ -218,7 +192,6 @@ class GovTechAPI:
                 if not data: break
                 out.write(data)
 
-        # 3. Registra Diário
         novo_diario = Diario(
             municipio="Lençóis Paulista",
             data_publicacao=datetime.strptime(data_pub, "%Y-%m-%d").date(),
@@ -232,7 +205,6 @@ class GovTechAPI:
         session.commit()
         id_pai = novo_diario.id
 
-        # 4. Extrai Texto
         texto = ""
         try:
             with pdfplumber.open(caminho) as pdf:
@@ -241,7 +213,7 @@ class GovTechAPI:
         except Exception as e:
             print(f"Erro PDF: {e}")
 
-        # 5. IA (PROMPT COM GEMINI)
+        # 5. IA (PROMPT COM SDK NOVO)
         if len(texto) > 100:
             hoje_str = datetime.now().strftime("%d/%m/%Y")
             
@@ -249,61 +221,58 @@ class GovTechAPI:
             ATUE COMO: Especialista em Licitações Públicas (B2G).
             CONTEXTO: Hoje é {hoje_str}. Analise o texto do Diário Oficial.
             
-            REGRAS DE FILTRAGEM E EXCLUSÃO (CRÍTICO):
-            1. IGNORE TOTALMENTE (Não retorne JSON para estes): 
-               - "Processo Seletivo (Empregos/Estágio)"
-               - "Concurso Público"
-               - "Nomeações/Exonerações"
-               - "Conselhos Municipais"
-               - "Leis e Decretos Legislativos"
-               - "Chamamento Público para ARTESÃOS, FEIRANTES ou PESSOAS FÍSICAS" (Isto não é B2G).
-               - "Termo de Fomento" ou "Subvenção Social".
-               - Tabelas dentro de "DECRETOS DE SUPLEMENTAÇÃO" ou "CRÉDITO SUPLEMENTAR" (Isso é contabilidade interna, IGNORE).
+            REGRAS DE FILTRAGEM (CRÍTICO):
+            1. IGNORE TOTALMENTE: 
+               - "Processo Seletivo", "Concurso Público", "Nomeações", "Conselhos", "Leis".
+               - "Chamamento Público para ARTESÃOS/FEIRANTES".
+               - Tabelas dentro de "DECRETOS DE SUPLEMENTAÇÃO".
 
             2. CAPTURE APENAS VENDAS REAIS (B2G):
-               - Aquisição de produtos, obras, serviços de engenharia, limpeza, TI, alimentação, etc.
+               - Aquisição de produtos, obras, serviços, TI, etc.
 
             3. REGRAS DE STATUS:
-               - "Aviso de Licitação" (Data futura) -> Status: "Aberto"
-               - "Homologação/Adjudicação/Extrato" -> Status: "Contratado"
-               - "Prorrogação/Aditivo" -> Status: "Renovação"
-               - "Licitação Deserta/Fracassada" -> Status: "Fracassada"
-               - "Suspensão" -> Status: "Suspenso"
+               - "Aviso de Licitação" (Futuro) -> "Aberto"
+               - "Homologação/Extrato" -> "Contratado"
+               - "Aditivo" -> "Renovação"
+               - "Deserta/Fracassada" -> "Fracassada"
 
-            4. DATAS: Extraia a data da sessão no formato DD/MM/AAAA. Se houver intervalo, pegue a data FINAL.
+            4. DATAS: Extraia DD/MM/AAAA.
 
             FORMATO DE SAÍDA (JSON ARRAY):
             [
               {{
                 "id_processo": "Pregão 90/2025",
                 "categoria": "Obras",
-                "objeto": "Resumo do que está sendo comprado",
+                "objeto": "Resumo",
                 "valor": "1200.00",
-                "vencedor": "Nome da Empresa ou 'Em Aberto'",
-                "cnpj": "XX.XXX.XXX/0001-XX (ou VAZIO)",
+                "vencedor": "Nome ou 'Em Aberto'",
+                "cnpj": "XX",
                 "data_sessao": "DD/MM/AAAA", 
                 "status": "Aberto",
-                "insight": "Frase curta estratégica"
+                "insight": "Frase"
               }}
             ]
             
-            Texto para análise (Primeiros 30k caracteres):
+            Texto (30k chars):
             {texto[:30000]}
             """
 
             try:
-                # CHAMADA GEMINI
-                response = model.generate_content(prompt)
+                # --- CHAMADA ATUALIZADA ---
+                response = client.models.generate_content(
+                    model='gemini-1.5-flash',
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        response_mime_type='application/json',
+                        temperature=0.1
+                    )
+                )
                 
-                # Como configuramos response_mime_type="application/json", o texto já vem limpo
                 raw_json = response.text
                 dados_ia = json.loads(raw_json)
 
                 for item in dados_ia:
-                    # 1. Limpeza de Valor
                     valor_float = limpar_valor(item.get('valor', 0))
-                    
-                    # 2. Correção Temporal (PYTHON SOBRESCREVE IA)
                     data_sessao_str = item.get('data_sessao', '')
                     status_final = verificar_status_real(item.get('status', 'Aberto'), data_sessao_str)
                     
@@ -315,7 +284,7 @@ class GovTechAPI:
                         diario_id=id_pai,
                         id_processo=item.get('id_processo', 'N/A'),
                         categoria=item.get('categoria', 'Geral'),
-                        objeto=item.get('objeto', 'N/A')[:500], # Limite seguro
+                        objeto=item.get('objeto', 'N/A')[:500],
                         valor=valor_float,
                         vencedor=item.get('vencedor', 'Em Aberto'),
                         cnpj_vencedor=item.get('cnpj', ''),
@@ -324,10 +293,10 @@ class GovTechAPI:
                         insight_venda=insight_final
                     )
                     session.add(op)
-                
                 session.commit()
+
             except Exception as e:
-                print(f"Erro Gemini IA: {e}")
+                print(f"Erro Gemini SDK: {e}")
 
         session.close()
         if os.path.exists(caminho): os.remove(caminho)
@@ -341,13 +310,11 @@ class GovTechAPI:
         
         query = session.query(Oportunidade).join(Diario)
         
-        # Filtros
         if status and status not in ['Todos', 'Todas']:
             query = query.filter(Oportunidade.status == status)
         if categoria and categoria not in ['Todos', 'Todas']:
             query = query.filter(Oportunidade.categoria.like(f"%{categoria}%"))
         
-        # Ordenação
         ops = query.order_by(
             Oportunidade.status == 'Aberto', 
             Diario.data_publicacao.desc()
@@ -355,9 +322,7 @@ class GovTechAPI:
 
         lista = []
         for o in ops:
-            # Link limpo para o frontend
             link_limpo = f"https://lencois.mentor.metaway.com.br/recurso/diario/editar/{o.diario.codigo_origem}"
-            
             lista.append({
                 "id": o.id,
                 "municipio": o.diario.municipio,
@@ -378,23 +343,18 @@ class GovTechAPI:
         session.close()
         return lista
 
-# ==========================================
-# INICIALIZAÇÃO
-# ==========================================
 if __name__ == '__main__':
     init_db()
-    
     conf = {
         'global': {
             'server.socket_host': '0.0.0.0',
             'server.socket_port': 9090,
-            'server.max_request_body_size': 100 * 1024 * 1024 # 100MB Upload
+            'server.max_request_body_size': 100 * 1024 * 1024
         },
         '/': { 'tools.cors.on': True },
         '/usuarios': { 'tools.cors.on': True },
         '/keywords': { 'tools.cors.on': True },
         '/favoritos': { 'tools.cors.on': True }
     }
-    
-    print("\n--- GOVTECH BACKEND (GEMINI 1.5) INICIADO (PORTA 9090) ---")
+    print("\n--- GOVTECH BACKEND (GEMINI 1.5 - SDK NOVO) RODANDO ---")
     cherrypy.quickstart(GovTechAPI(), '/', conf)
