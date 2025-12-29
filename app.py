@@ -10,7 +10,6 @@ from database import init_db, db_session, Diario, Oportunidade, Usuario, Alerta,
 # --- IMPORT DA NOVA BIBLIOTECA DO GOOGLE ---
 from google import genai
 from google.genai import types
-from google.api_core import exceptions # Para pegar o erro exato
 
 # --- CONFIGURAÇÃO GEMINI ---
 api_key = os.getenv("GEMINI_API_KEY")
