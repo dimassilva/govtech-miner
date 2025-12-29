@@ -242,6 +242,8 @@ class GovTechAPI:
                 "cnpj": o.cnpj_vencedor,
                 "status": o.status,
                 "data_sessao": o.data_sessao,
+                "prazo": o.prazo,
+                "localizacao": o.localizacao,
                 "insight": o.insight_venda
             })
         
