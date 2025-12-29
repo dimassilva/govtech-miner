@@ -38,7 +38,10 @@ class LencoisProcessor(BaseProcessor):
             2. CONTABILIDADE INTERNA: Ignore tabelas de "Suplementação", "Dotação Orçamentária", "Crédito Suplementar", "Decreto de Abertura de Crédito", "Anulação de Verbas". (Dica: Se o texto fala apenas de remanejamento de verba entre secretarias, NÃO é venda).
             3. ASSISTENCIALISMO/POLÍTICA: Ignore "Chamamento Público para Artesãos", "Feirantes", "Subvenção Social", "Repasse ao Terceiro Setor", "Conselhos Municipais".
             4. LEGISLATIVO: Ignore "Indicações de Vereadores", "Moções", "Leis" (exceto se for lei autorizando compra específica).
-            5. Ignore 'Abre Crédito Especial', 'Crédito Adicional', 'Crédito Suplementar' e qualquer Decreto que trate apenas de orçamento.
+            5. CONTABILIDADE E ORÇAMENTO (LIXO):
+                - Ignore 'Abre Crédito Especial', 'Crédito Adicional', 'Crédito Suplementar' e qualquer Decreto que trate apenas de orçamento.
+                - IGNORE ABSOLUTAMENTE qualquer ato que contenha: "Abertura de Crédito Especial", "Abre Crédito Suplementar", "Crédito Adicional", "Suplementação de Verbas", "Remanejamento", "Dotação Orçamentária", "Anulação de Dotações".
+                - Se o texto diz "Fica aberto crédito especial... para ocorrer despesas...", isso é apenas movimentação bancária interna, NÃO É COMPRA. Ignore.
 
             === O QUE CAPTURAR (OURO - VENDAS B2G) ===
             Capture qualquer transação onde a prefeitura compra produtos ou contrata empresas:
