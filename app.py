@@ -32,13 +32,27 @@ cherrypy.tools.cors = cherrypy.Tool('before_handler', cors)
 # ==========================================
 # FUNÇÕES AUXILIARES
 # ==========================================
-def limpar_valor(valor_str):
-    if isinstance(valor_str, (int, float)):
-        return float(valor_str)
+def limpar_valor(valor):
+    """
+    Converte inteligentemente formatos BR (1.000,00) e US (1000.00) para float.
+    """
+    if isinstance(valor, (int, float)):
+        return float(valor)
+    
+    if not valor:
+        return 0.0
+
+    v = str(valor).strip().replace('R$', '').strip()
+    
     try:
-        limpo = str(valor_str).replace('R$', '').replace(' ', '').replace('.', '')
-        limpo = limpo.replace(',', '.')
-        return float(limpo)
+        # Se tiver vírgula, assumimos formato BR (ex: 1.200,50 ou 90,00)
+        if ',' in v:
+            v = v.replace('.', '')  # Remove ponto de milhar
+            v = v.replace(',', '.') # Troca vírgula por ponto decimal
+        # Se NÃO tiver vírgula e tiver ponto, assumimos formato US/IA (ex: 90.00)
+        # Nesse caso, não removemos o ponto, pois ele é decimal!
+        
+        return float(v)
     except:
         return 0.0
 
@@ -246,7 +260,7 @@ class GovTechAPI:
                 "id_processo": "Pregão 90/2025",
                 "categoria": "Obras",
                 "objeto": "Resumo",
-                "valor": "1200.00",
+                "valor": 1200.00,
                 "vencedor": "Nome ou 'Em Aberto'",
                 "cnpj": "XX",
                 "data_sessao": "DD/MM/AAAA", 
