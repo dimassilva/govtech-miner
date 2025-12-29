@@ -65,7 +65,7 @@ class LencoisProcessor(BaseProcessor):
                 "cnpj": "XX.XXX.XXX/0001-XX",
                 "data_sessao": "DD/MM/AAAA", 
                 "status": "Aberto",
-                "insight": "Frase destacando a oportunidade (ex: 'Compra direta de TI sem licitação')"
+                "insight": "Frase destacando a oportunidade (ex: 'Compra direta de TI sem licitação'). Quando o valor for 0 e o objeto contiver "Registro de Preços", pode adicionar um insight: "Ata de Registro de Preços. Valor sob demanda (consumo futuro)."
             }}
             ]
 
