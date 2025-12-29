@@ -68,7 +68,7 @@ class LencoisProcessor(BaseProcessor):
                 "prazo": "12 meses" (ou "60 dias", "Imediato"),
                 "localizacao": "Local de entrega ou execução (ex: Almoxarifado Central)",
                 "status": "Aberto",
-                "insight": "Frase destacando a oportunidade (ex: 'Compra direta de TI sem licitação')"
+                "insight": "Frase destacando a oportunidade (ex: 'Compra direta de TI sem licitação'). Quando o valor for 0 e o objeto contiver "Registro de Preços", pode adicionar um insight: "Ata de Registro de Preços. Valor sob demanda (consumo futuro)."
             }}
             ]
 
