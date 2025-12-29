@@ -21,7 +21,7 @@ def job_lencois():
     
     # Busca últimos 40 dias para garantir
     data_final = datetime.now()
-    data_inicial = data_final - timedelta(days=40)
+    data_inicial = data_final - timedelta(days=364)
     
     params = {
         "dataInicial": data_inicial.strftime("%Y-%m-%dT00:00:00"),

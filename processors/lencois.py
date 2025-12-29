@@ -56,6 +56,9 @@ class LencoisProcessor(BaseProcessor):
                 - Compras Diretas (Dispensa Art. 75, Inexigibilidade).
                 - Contratos e Aditivos (Apenas se for compra/serviço, não convênios).
                 - Atas de Registro de Preços (Mesmo com valor R$ 0,00 ou unitário).
+
+                === IMPORTANTE: OS STATUS OFICIAIS QUE DEVEM SER ATRIBUIDOS de acordo com a oportunidade encontrada:
+                "Aberto", "Suspenso", "Encerrado", "Contratado", "Fracassada", "Renovação"]
                 
                 === FORMATO DE SAÍDA (JSON PURO) ===
                 Responda APENAS com um Array JSON válido. Sem Markdown. Sem explicações.
