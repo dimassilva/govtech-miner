@@ -11,7 +11,7 @@ urllib3.disable_warnings()
 
 # CONFIGURAÇÃO DA API
 # Ajuste o IP conforme seu servidor (localhost se rodar junto, ou IP externo)
-API_URL = os.getenv("API_URL", "http://127.0.0.1:9090/upload")
+API_URL = os.getenv("API_URL", "http://a0okwgosoc4oookw8s40cwco.104.168.4.3.sslip.io/upload")
 
 # ==============================================================================
 # ROBÔ 1: LENÇÓIS PAULISTA (Via API JSON + Base64)
