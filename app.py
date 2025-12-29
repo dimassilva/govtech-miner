@@ -5,11 +5,27 @@ import json
 import re
 from datetime import datetime
 from database import init_db, db_session, Diario, Oportunidade, Usuario, Alerta, Favorito
-from openai import OpenAI
+import google.generativeai as genai
+from google.ai.generativelanguage_v1beta.types import content
 
-# --- CONFIGURAÇÃO ---
-api_key = os.getenv("OPENAI_API_KEY")
-client = OpenAI(api_key=api_key)
+# --- CONFIGURAÇÃO GEMINI ---
+# Certifique-se de ter a variável de ambiente GEMINI_API_KEY definida
+api_key = os.getenv("GEMINI_API_KEY")
+genai.configure(api_key=api_key)
+
+# Configuração do modelo (Usando o Flash por ser rápido e eficiente para volumes de texto)
+generation_config = {
+  "temperature": 0.1,
+  "top_p": 0.95,
+  "top_k": 64,
+  "max_output_tokens": 8192,
+  "response_mime_type": "application/json", # FORÇA O RETORNO EM JSON PURO
+}
+
+model = genai.GenerativeModel(
+  model_name="gemini-1.5-flash",
+  generation_config=generation_config,
+)
 
 # ==========================================
 # FERRAMENTA DE CORS (BLINDADA)
@@ -171,7 +187,7 @@ class FavoritoController:
             session.close()
 
 # ==========================================
-# 3. API PRINCIPAL (Processamento IA)
+# 3. API PRINCIPAL (Processamento GEMINI)
 # ==========================================
 class GovTechAPI:
     usuarios = UsuarioController()
@@ -180,7 +196,7 @@ class GovTechAPI:
 
     @cherrypy.expose
     def index(self):
-        return "GovTech API v9.0 (Data Logic Fix Applied)"
+        return "GovTech API v9.1 (Gemini 1.5 Flash Integrated)"
 
     @cherrypy.expose
     @cherrypy.tools.json_out()
@@ -225,7 +241,7 @@ class GovTechAPI:
         except Exception as e:
             print(f"Erro PDF: {e}")
 
-        # 5. IA (PROMPT CORRIGIDO E BLINDADO)
+        # 5. IA (PROMPT COM GEMINI)
         if len(texto) > 100:
             hoje_str = datetime.now().strftime("%d/%m/%Y")
             
@@ -233,7 +249,7 @@ class GovTechAPI:
             ATUE COMO: Especialista em Licitações Públicas (B2G).
             CONTEXTO: Hoje é {hoje_str}. Analise o texto do Diário Oficial.
             
-            REGRAS DE FILTRAGEM (CRÍTICO):
+            REGRAS DE FILTRAGEM E EXCLUSÃO (CRÍTICO):
             1. IGNORE TOTALMENTE (Não retorne JSON para estes): 
                - "Processo Seletivo (Empregos/Estágio)"
                - "Concurso Público"
@@ -242,6 +258,7 @@ class GovTechAPI:
                - "Leis e Decretos Legislativos"
                - "Chamamento Público para ARTESÃOS, FEIRANTES ou PESSOAS FÍSICAS" (Isto não é B2G).
                - "Termo de Fomento" ou "Subvenção Social".
+               - Tabelas dentro de "DECRETOS DE SUPLEMENTAÇÃO" ou "CRÉDITO SUPLEMENTAR" (Isso é contabilidade interna, IGNORE).
 
             2. CAPTURE APENAS VENDAS REAIS (B2G):
                - Aquisição de produtos, obras, serviços de engenharia, limpeza, TI, alimentação, etc.
@@ -255,37 +272,31 @@ class GovTechAPI:
 
             4. DATAS: Extraia a data da sessão no formato DD/MM/AAAA. Se houver intervalo, pegue a data FINAL.
 
-            RETORNE UM JSON ARRAY:
+            FORMATO DE SAÍDA (JSON ARRAY):
             [
               {{
                 "id_processo": "Pregão 90/2025",
                 "categoria": "Obras",
                 "objeto": "Resumo do que está sendo comprado",
-                "valor": "1200.00" (Número ou 0),
+                "valor": "1200.00",
                 "vencedor": "Nome da Empresa ou 'Em Aberto'",
                 "cnpj": "XX.XXX.XXX/0001-XX (ou VAZIO)",
                 "data_sessao": "DD/MM/AAAA", 
                 "status": "Aberto",
-                "insight": "Frase estratégica"
+                "insight": "Frase curta estratégica"
               }}
             ]
             
-            Texto para análise (Primeiros 15k caracteres):
-            {texto[:15000]}
+            Texto para análise (Primeiros 30k caracteres):
+            {texto[:30000]}
             """
 
             try:
-                resp = client.chat.completions.create(
-                    model="gpt-3.5-turbo",
-                    messages=[{"role": "user", "content": prompt}],
-                    temperature=0.1
-                )
+                # CHAMADA GEMINI
+                response = model.generate_content(prompt)
                 
-                raw_json = resp.choices[0].message.content.strip()
-                # Limpeza de markdown caso a IA mande ```json ... ```
-                if "```" in raw_json:
-                    raw_json = raw_json.replace("```json", "").replace("```", "")
-                
+                # Como configuramos response_mime_type="application/json", o texto já vem limpo
+                raw_json = response.text
                 dados_ia = json.loads(raw_json)
 
                 for item in dados_ia:
@@ -316,7 +327,7 @@ class GovTechAPI:
                 
                 session.commit()
             except Exception as e:
-                print(f"Erro IA/Parser: {e}")
+                print(f"Erro Gemini IA: {e}")
 
         session.close()
         if os.path.exists(caminho): os.remove(caminho)
@@ -336,16 +347,16 @@ class GovTechAPI:
         if categoria and categoria not in ['Todos', 'Todas']:
             query = query.filter(Oportunidade.categoria.like(f"%{categoria}%"))
         
-        # Ordenação: Abertos primeiro, depois data de publicação
+        # Ordenação
         ops = query.order_by(
-            Oportunidade.status == 'Aberto', # True vem depois no MySQL? Depende. Melhor ordenar por data PUB.
+            Oportunidade.status == 'Aberto', 
             Diario.data_publicacao.desc()
         ).limit(100).all()
 
         lista = []
         for o in ops:
             # Link limpo para o frontend
-            link_limpo = f"[https://lencois.mentor.metaway.com.br/recurso/diario/editar/](https://lencois.mentor.metaway.com.br/recurso/diario/editar/){o.diario.codigo_origem}"
+            link_limpo = f"https://lencois.mentor.metaway.com.br/recurso/diario/editar/{o.diario.codigo_origem}"
             
             lista.append({
                 "id": o.id,
@@ -385,5 +396,5 @@ if __name__ == '__main__':
         '/favoritos': { 'tools.cors.on': True }
     }
     
-    print("\n--- GOVTECH BACKEND INICIADO (PORTA 9090) ---")
+    print("\n--- GOVTECH BACKEND (GEMINI 1.5) INICIADO (PORTA 9090) ---")
     cherrypy.quickstart(GovTechAPI(), '/', conf)
