@@ -110,13 +110,14 @@ class BaseProcessor:
                 print(f"   > Gemini IA (Tentativa {tentativa+1}/{max_tentativas})...")
                 
                 response = self.client.models.generate_content(
-                    model='gemini-1.5-flash', 
+                    model='gemini-2.0-flash-001', 
                     contents=conteudo_completo,
                     config=types.GenerateContentConfig(
                         response_mime_type='application/json',
                         temperature=0.1
                     )
                 )
+                print(f"DEBUG IA RAW: {response.text}")
                 
                 return json.loads(response.text)
 
