@@ -18,50 +18,54 @@ class LencoisProcessor(BaseProcessor):
         print("   > [PROCESSADOR] Iniciando Análise: Lençóis Paulista")
         texto = self.extrair_texto(caminho_pdf)
         
-        if len(texto) < 100:
-            print("   > [AVISO] Texto do PDF insuficiente ou vazio.")
-            return
+        if len(texto) > 100:
+            hoje_str = datetime.now().strftime("%d/%m/%Y")
+            
+            prompt = f"""
+            ATUE COMO: Especialista em Licitações Públicas (B2G).
+            CONTEXTO: Hoje é {hoje_str}. Analise o texto do Diário Oficial.
+            
+            REGRAS DE FILTRAGEM (CRÍTICO):
+            1. IGNORE TOTALMENTE: 
+               - "Processo Seletivo", "Concurso Público", "Nomeações", "Conselhos", "Leis".
+               - tabelas financeiras com títulos como: "Dotação", "Suplementação", "Anulação", "Crédito Suplementar", "Decreto Executivo". (Isso é contabilidade interna).
+               - "Chamamento Público para ARTESÃOS/FEIRANTES".
+               - "Processo Seletivo" (RH) e "Concurso Público".
+               - Tabelas dentro de "DECRETOS DE SUPLEMENTAÇÃO".
 
-        hoje_str = datetime.now().strftime("%d/%m/%Y")
-        
-        # PROMPT ESPECÍFICO PARA LENÇÓIS
-        prompt = f"""
-        ATUE COMO: Especialista em Licitações Públicas (B2G).
-        CONTEXTO: Hoje é {hoje_str}. Analise o texto do Diário Oficial de Lençóis Paulista.
-        
-        REGRAS DE FILTRAGEM (CRÍTICO):
-        1. IGNORE TOTALMENTE: 
-           - "Processo Seletivo", "Concurso Público", "Nomeações", "Conselhos", "Leis".
-           - "Chamamento Público para ARTESÃOS/FEIRANTES".
-           - Tabelas dentro de "DECRETOS DE SUPLEMENTAÇÃO".
+            2. CAPTURE APENAS VENDAS REAIS (B2G)(OURO):
+               - Aquisição de produtos, obras, serviços, TI, etc.
+               - Busque por "Ratificação", "Homologação", "Adjudicação", "Extrato de Contrato", "Inexigibilidade", "Dispensa".
+               - Busque por "Aviso de Licitação", "Pregão".
 
-        2. CAPTURE APENAS VENDAS REAIS (B2G):
-           - Aquisição de produtos, obras, serviços, TI, etc.
+            3. REGRAS DE STATUS:
+               - "Aviso de Licitação" (Futuro) -> "Aberto"
+               - "Homologação/Extrato" -> "Contratado"
+               - "Aditivo" -> "Renovação"
+               - "Deserta/Fracassada" -> "Fracassada"
 
-        3. REGRAS DE STATUS:
-           - "Aviso de Licitação" (Futuro) -> "Aberto"
-           - "Homologação/Extrato" -> "Contratado"
-           - "Aditivo" -> "Renovação"
-           - "Deserta/Fracassada" -> "Fracassada"
+            4. DATAS: Extraia DD/MM/AAAA.
 
-        4. DATAS: Extraia DD/MM/AAAA.
+            IMPORTANTE: Verifique o documento até a ÚLTIMA PÁGINA. As compras diretas (Dispensas/Inexigibilidade) costumam ficar no final.
 
-        FORMATO DE SAÍDA (JSON ARRAY):
-        [
-          {{
-            "id_processo": "Pregão 90/2025",
-            "categoria": "Obras",
-            "objeto": "Resumo",
-            "valor": 1200.00,
-            "vencedor": "Nome ou 'Em Aberto'",
-            "cnpj": "XX",
-            "data_sessao": "DD/MM/AAAA", 
-            "status": "Aberto",
-            "insight": "Frase"
-          }}
-        ]
-        NOTA SOBRE VALOR: Retorne como NÚMERO (Float) JSON puro. Use ponto para decimal. Exemplo: 90.00.
-        """
+            FORMATO DE SAÍDA (JSON ARRAY):
+            [
+              {{
+                "id_processo": "Pregão 90/2025",
+                "categoria": "Obras",
+                "objeto": "Resumo",
+                "valor": 1200.00,
+                "vencedor": "Nome ou 'Em Aberto'",
+                "cnpj": "XX",
+                "data_sessao": "DD/MM/AAAA", 
+                "status": "Aberto",
+                "insight": "Frase"
+              }}
+            ]
+            
+            Texto (30k chars):
+            {texto[:30000]}
+            """
         
         dados = self.processar_ia(texto, prompt)
         

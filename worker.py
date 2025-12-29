@@ -19,9 +19,9 @@ API_URL = os.getenv("API_URL", "http://a0okwgosoc4oookw8s40cwco.104.168.4.3.ssli
 def job_lencois():
     print(f"\n[{datetime.now().strftime('%H:%M')}] ROBÔ LENÇÓIS INICIADO...")
     
-    # Busca últimos 60 dias para garantir
+    # Busca últimos 40 dias para garantir
     data_final = datetime.now()
-    data_inicial = data_final - timedelta(days=50)
+    data_inicial = data_final - timedelta(days=40)
     
     params = {
         "dataInicial": data_inicial.strftime("%Y-%m-%dT00:00:00"),
