@@ -310,7 +310,7 @@ class GovTechAPI:
                     # Verifica se é erro de cota (429)
                     if "429" in erro_msg or "RESOURCE_EXHAUSTED" in erro_msg:
                         print(f"   >>> COTA EXCEDIDA (429). Esperando 30 segundos...")
-                        time.sleep(30) # Espera 30s e tenta de novo
+                        time.sleep(60) # Espera 30s e tenta de novo
                     else:
                         print(f"   >>> Erro fatal na IA: {e}")
                         break # Se for outro erro, não adianta tentar de novo
