@@ -28,58 +28,57 @@ class LencoisProcessor(BaseProcessor):
             texto_limitado = texto[:500000]
 
             prompt = f"""
-            ATUE COMO: Especialista em Licitações Públicas (B2G) e Auditor de Dados.
-            CONTEXTO: Hoje é {hoje_str}. Analise o texto completo do Diário Oficial fornecido abaixo.
-            
-            OBJETIVO: Extrair oportunidades de vendas para o governo (Licitações, Dispensas, Contratos) e ignorar ruídos administrativos.
-
-            === REGRAS DE EXCLUSÃO (CRÍTICO - O QUE IGNORAR) ===
-            1. RH e PESSOAL: Ignore "Processo Seletivo", "Concurso Público", "Nomeações", "Exonerações", "Convocação de Professor/Estagiário". Se houver lista de nomes de pessoas físicas (CPFs), IGNORE.
-            2. CONTABILIDADE INTERNA: Ignore tabelas de "Suplementação", "Dotação Orçamentária", "Crédito Suplementar", "Decreto de Abertura de Crédito", "Anulação de Verbas". (Dica: Se o texto fala apenas de remanejamento de verba entre secretarias, NÃO é venda).
-            3. ASSISTENCIALISMO/POLÍTICA: Ignore "Chamamento Público para Artesãos", "Feirantes", "Subvenção Social", "Repasse ao Terceiro Setor", "Conselhos Municipais".
-            4. LEGISLATIVO: Ignore "Indicações de Vereadores", "Moções", "Leis" (exceto se for lei autorizando compra específica).
-            5. CONTABILIDADE E ORÇAMENTO (LIXO):
-                - Ignore 'Abre Crédito Especial', 'Crédito Adicional', 'Crédito Suplementar' e qualquer Decreto que trate apenas de orçamento.
-                - IGNORE ABSOLUTAMENTE qualquer ato que contenha: "Abertura de Crédito Especial", "Abre Crédito Suplementar", "Crédito Adicional", "Suplementação de Verbas", "Remanejamento", "Dotação Orçamentária", "Anulação de Dotações".
-                - Se o texto diz "Fica aberto crédito especial... para ocorrer despesas...", isso é apenas movimentação bancária interna, NÃO É COMPRA. Ignore.
-                - IGNORE "Designação de Fiscal de Contrato", "Nomeação de Gestor de Contrato", "Atribuições de Gestor".
-                - DICA: Se o texto diz "Nomeia servidores para fiscalizar contrato/ata", IGNORE. Isso é ato administrativo interno.
-
-            === O QUE CAPTURAR (OURO - VENDAS B2G) ===
-            Capture qualquer transação onde a prefeitura compra produtos ou contrata empresas:
-            - MODALIDADES: Pregão (Eletrônico/Presencial), Concorrência, Tomada de Preços, Dispensa de Licitação (Art. 75), Inexigibilidade (Art. 74), Credenciamento (para serviços).
-            - DOCUMENTOS: Aviso de Licitação, Edital, Homologação, Adjudicação, Extrato de Contrato, Ata de Registro de Preços, Termo Aditivo (apenas se tiver valor monetário relevante).
-            - CATEGORIAS: Obras, Reformas, Medicamentos, TI (Software/Hardware), Limpeza, Segurança, Merenda, Uniformes, Locação de Veículos/Máquinas, Consultoria.
-
-            === REGRAS DE STATUS ===
-            - "Aviso de Licitação" / "Abertura" -> "Aberto" (Data futura)
-            - "Homologação" / "Adjudicação" / "Extrato de Contrato" -> "Contratado" (Já ocorreu)
-            - "Aditivo de Prazo/Valor" -> "Renovação"
-            - "Deserta" / "Fracassada" / "Revogada" -> "Fracassada"
-            - "Suspensão" -> "Suspenso"
-
-            === FORMATO DE SAÍDA (JSON PURO) ===
-            Responda APENAS com um Array JSON válido. Não use Markdown (```json). Não use explicações antes ou depois.
-            
-            [
-            {{
-                "id_processo": "Pregão 90/2025",
-                "categoria": "Obras" (ou TI, Serviços, Compras, Saúde, Outros),
-                "objeto": "Descrição resumida do que está sendo comprado (máx 200 chars)",
-                "valor": 1200.50,  (IMPORTANTE: Retorne FLOAT. Converta '1.200,50' para 1200.50. Se não houver valor exato, use 0.0),
-                "vencedor": "Nome da Empresa ou 'Em Aberto' se for Aviso",
-                "cnpj": "XX.XXX.XXX/0001-XX" (ou vazio se não houver),
-                "data_sessao": "DD/MM/AAAA",
-                "prazo": "12 meses" (ou "60 dias", "Imediato"),
-                "localizacao": "Local de entrega ou execução (ex: Almoxarifado Central)",
-                "status": "Aberto",
-                "insight": "Frase destacando a oportunidade (ex: 'Compra direta de TI sem licitação'). Quando o valor for 0 e o objeto contiver "Registro de Preços", pode adicionar um insight: "Ata de Registro de Preços. Valor sob demanda (consumo futuro)."
-            }}
-            ]
-
-            === TEXTO DO DIÁRIO OFICIAL (LEIA ATÉ O FIM) ===
-            {texto_limitado}
-            """
+                ATUE COMO: Auditor Sênior de Contratações Públicas e Especialista em B2G.
+                CONTEXTO: Hoje é {hoje_str}. Sua tarefa é minerar dados do Diário Oficial.
+                
+                === SUA MISSÃO (AUTO-AUDITORIA) ===
+                Você deve aplicar um filtro de "Ceticismo Extremo". Seu objetivo NÃO é encher o banco de dados, mas sim encontrar APENAS oportunidades de vendas REAIS e VALIDAS.
+                Prefira retornar uma lista vazia [] a retornar dados incorretos (Falsos Positivos).
+                
+                === PASSO A PASSO MENTAL (Faça isso para cada item antes de extrair) ===
+                1. Li um trecho com valor monetário ou número de contrato?
+                2. VERIFICAÇÃO DE "LIXO":
+                   - O texto fala de "Designar Fiscal", "Gestor", "Nomear servidor"? -> SE SIM, DESCARTE IMEDIATAMENTE.
+                   - O texto fala de "Abertura de Crédito", "Suplementação", "Remanejamento"? -> SE SIM, DESCARTE IMEDIATAMENTE.
+                   - O texto fala de "Processo Seletivo", "Concurso", "Estagiário"? -> SE SIM, DESCARTE IMEDIATAMENTE.
+                3. Se passou pelos filtros acima, é uma compra de produto/serviço externo? -> ENTÃO EXTRAIA.
+                
+                === REGRAS DE EXCLUSÃO (LISTA NEGRA) ===
+                IGNORE ABSOLUTAMENTE se o texto contiver:
+                - "Designa servidor", "Atribuições de fiscal", "Gestão e fiscalização".
+                - "Crédito Adicional", "Superávit Financeiro", "Dotação Orçamentária".
+                - "Concede licença", "Prorroga afastamento", "Readaptação".
+                - "Subvenção Social", "Repasse ao Terceiro Setor".
+                
+                === O QUE CAPTURAR (LISTA BRANCA - VENDAS B2G) ===
+                Capture apenas quando a PREFEITURA PAGA para UMA EMPRESA:
+                - Licitações (Pregão, Concorrência, Tomada de Preços).
+                - Compras Diretas (Dispensa Art. 75, Inexigibilidade).
+                - Contratos e Aditivos (Apenas se for compra/serviço, não convênios).
+                - Atas de Registro de Preços (Mesmo com valor R$ 0,00 ou unitário).
+                
+                === FORMATO DE SAÍDA (JSON PURO) ===
+                Responda APENAS com um Array JSON válido. Sem Markdown. Sem explicações.
+                
+                [
+                  {{
+                    "id_processo": "Pregão 90/2025",
+                    "categoria": "Obras" (ou TI, Serviços, Compras, Saúde, Outros),
+                    "objeto": "Descrição resumida (ex: Aquisição de 100 computadores)",
+                    "valor": 1200.50, (Use 0.0 se for Registro de Preços ou não informado),
+                    "vencedor": "Nome da Empresa ou 'Em Aberto'",
+                    "cnpj": "XX.XXX.XXX/0001-XX",
+                    "data_sessao": "DD/MM/AAAA",
+                    "prazo": "12 meses",
+                    "localizacao": "Almoxarifado Central",
+                    "status": "Aberto",
+                    "insight": "Frase curta (ex: 'Compra direta de TI'). Se for Ata, use: 'Ata de Registro de Preços. Valor sob demanda.'"
+                  }}
+                ]
+                
+                === TEXTO DO DIÁRIO OFICIAL (LEIA ATÉ O FIM) ===
+                {texto_limitado}
+                """
         
         dados = self.processar_ia(texto, prompt)
         
