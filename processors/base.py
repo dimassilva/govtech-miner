@@ -100,10 +100,10 @@ class BaseProcessor:
         """
         Envia para o Gemini com lógica de Retry Exponencial (Backoff)
         """
-        max_tentativas = 4
+        max_tentativas = 2
         
         # Concatena o Prompt do Sistema com o Texto do PDF
-        conteudo_completo = f"{prompt_sistema}\n\n=== TEXTO DO DIÁRIO OFICIAL ===\n{texto[:40000]}"
+        conteudo_completo = f"{prompt_sistema}\n\n=== TEXTO DO DIÁRIO OFICIAL ===\n{texto[:500000]}"
 
         for tentativa in range(max_tentativas):
             try:
